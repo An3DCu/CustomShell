@@ -1,0 +1,6 @@
+# The image builds from the sources only, never from a local build or venv.
+.git
+build/
+.venv/
+**/__pycache__/
+.pytest_cache/

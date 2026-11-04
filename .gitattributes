@@ -1,0 +1,3 @@
+# Every text file is stored and checked out with LF, even on Windows.
+# A shell script or Makefile with CRLF breaks on Linux.
+* text=auto eol=lf
