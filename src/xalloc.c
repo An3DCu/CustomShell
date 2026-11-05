@@ -1,9 +1,11 @@
 #include "xalloc.h"
 
+#include <errno.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 static void out_of_memory(void)
 {
@@ -54,4 +56,23 @@ char *xstrndup(const char *s, size_t n)
     memcpy(copy, s, n);
     copy[n] = '\0';
     return copy;
+}
+
+char *xgetcwd(void)
+{
+    /* getcwd needs a buffer big enough; PATH_MAX isn't a real limit on
+     * Linux, so start small and double until it fits. */
+    for (size_t size = 256;; size *= 2) {
+        char *buf = xmalloc(size);
+        int err;
+
+        if (getcwd(buf, size) != NULL)
+            return buf;
+        err = errno;
+        free(buf);
+        if (err != ERANGE) {
+            errno = err;
+            return NULL;
+        }
+    }
 }

@@ -20,4 +20,8 @@ char *xstrdup(const char *s);
 /* Copies the first n bytes of s and adds a 0. s must have at least n bytes. */
 char *xstrndup(const char *s, size_t n);
 
+/* The current folder as a new string, however long it is. Returns NULL with
+ * errno set if it can't be read (for example, the folder was deleted). */
+char *xgetcwd(void);
+
 #endif
