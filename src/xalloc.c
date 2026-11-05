@@ -1,0 +1,57 @@
+#include "xalloc.h"
+
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+static void out_of_memory(void)
+{
+    fputs("acsh: out of memory\n", stderr);
+    exit(1);
+}
+
+void *xmalloc(size_t size)
+{
+    void *p = malloc(size ? size : 1);
+
+    if (p == NULL)
+        out_of_memory();
+    return p;
+}
+
+void *xcalloc(size_t count, size_t size)
+{
+    void *p = calloc(count ? count : 1, size ? size : 1);
+
+    if (p == NULL)
+        out_of_memory();
+    return p;
+}
+
+void *xreallocarray(void *p, size_t count, size_t size)
+{
+    size_t bytes;
+
+    if (size != 0 && count > SIZE_MAX / size)
+        out_of_memory();
+    bytes = count * size;
+    p = realloc(p, bytes ? bytes : 1);
+    if (p == NULL)
+        out_of_memory();
+    return p;
+}
+
+char *xstrdup(const char *s)
+{
+    return xstrndup(s, strlen(s));
+}
+
+char *xstrndup(const char *s, size_t n)
+{
+    char *copy = xmalloc(n + 1);
+
+    memcpy(copy, s, n);
+    copy[n] = '\0';
+    return copy;
+}
