@@ -6,9 +6,11 @@ sanitizer build.
 """
 
 import os
+import shlex
 import subprocess
 from pathlib import Path
 
+import pexpect
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -24,21 +26,65 @@ def acsh():
 
 
 @pytest.fixture
-def run(acsh, tmp_path):
-    """Run acsh with arguments and optional stdin, in an empty temp folder.
+def workdir(tmp_path):
+    """An empty folder for the test, with symlinks resolved so paths compare."""
+    return Path(os.path.realpath(tmp_path))
 
-    Returns the finished process (returncode, stdout, stderr). Nothing here is
-    a terminal; tests that need one use pexpect.
+
+def _env(env, unset):
+    merged = dict(os.environ)
+    merged.update(env or {})
+    for name in unset or ():
+        merged.pop(name, None)
+    return merged
+
+
+@pytest.fixture
+def run(acsh, workdir):
+    """Run acsh with arguments and stdin, in the test's folder.
+
+    run("--version") or run(stdin="echo hi\\n"). Returns the finished
+    process (returncode, stdout, stderr). Nothing here is a terminal, so acsh
+    shows no prompt; tests that need one use the `terminal` fixture.
     """
 
-    def _run(*args, stdin="", timeout=10):
+    def _run(*args, stdin="", env=None, unset=(), cwd=None, timeout=10):
         return subprocess.run(
             [acsh, *args],
             input=stdin,
             capture_output=True,
             text=True,
-            cwd=tmp_path,
+            cwd=cwd or workdir,
+            env=_env(env, unset),
             timeout=timeout,
         )
 
     return _run
+
+
+@pytest.fixture
+def terminal(acsh, workdir):
+    """Start acsh in a pseudo-terminal, the way a person would use it.
+
+    Returns a pexpect child. The test sends lines and keys and waits for
+    output. The child is killed at the end if it's still running.
+    """
+    children = []
+
+    def _start(env=None, unset=(), cwd=None):
+        # With no arguments, pexpect splits the command on spaces, and this
+        # repo's path may have some. Quoting keeps it one word.
+        child = pexpect.spawn(
+            shlex.quote(acsh),
+            cwd=str(cwd or workdir),
+            env=_env({"TERM": "dumb", **(env or {})}, unset),
+            encoding="utf-8",
+            timeout=5,
+        )
+        children.append(child)
+        return child
+
+    yield _start
+    for child in children:
+        if child.isalive():
+            child.terminate(force=True)
