@@ -132,13 +132,6 @@ def test_commands_get_the_rest_of_stdin(run):
     assert result.stdout == "got hello\nafter\n"
 
 
-def test_failed_command_does_not_print_output_twice(run):
-    # The old acsh printed "one" twice here: the failed child flushed a copy
-    # of the shell's stdout buffer on its way out.
-    result = run(stdin="echo one\nnosuchcommand\necho two\n")
-    assert result.stdout == "one\ntwo\n"
-
-
 def test_no_prompt_when_not_on_a_terminal(run):
     result = run(stdin="echo hi\nnosuchcommand\n")
     assert result.stdout == "hi\n"

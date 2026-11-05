@@ -8,6 +8,7 @@ struct shell {
     bool interactive; /* stdin and stderr are a terminal: show a prompt */
     int status;       /* exit status of the last command, later $? */
     bool exiting;     /* set by the exit built-in */
+    bool interrupted; /* Ctrl+C stopped the last command */
 };
 
 #endif

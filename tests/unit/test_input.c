@@ -31,13 +31,13 @@ static void test_lines_one_by_one(void)
     size_t cap = 0;
 
     CHECK(fd >= 0);
-    CHECK_INT_EQ(9, input_read_line(fd, &line, &cap));
+    CHECK_INT_EQ(9, input_read_line(fd, &line, &cap, false));
     CHECK_STR_EQ("echo one\n", line);
-    CHECK_INT_EQ(1, input_read_line(fd, &line, &cap));
+    CHECK_INT_EQ(1, input_read_line(fd, &line, &cap, false));
     CHECK_STR_EQ("\n", line);
-    CHECK_INT_EQ(20, input_read_line(fd, &line, &cap));
+    CHECK_INT_EQ(20, input_read_line(fd, &line, &cap, false));
     CHECK_STR_EQ("last without newline", line);
-    CHECK_INT_EQ(-1, input_read_line(fd, &line, &cap));
+    CHECK_INT_EQ(-1, input_read_line(fd, &line, &cap, false));
     CHECK_INT_EQ(0, errno);
     free(line);
     close(fd);
@@ -52,7 +52,7 @@ static void test_reads_no_further_than_the_line(void)
     char rest[16] = { 0 };
 
     CHECK(fd >= 0);
-    CHECK_INT_EQ(4, input_read_line(fd, &line, &cap));
+    CHECK_INT_EQ(4, input_read_line(fd, &line, &cap, false));
     CHECK_INT_EQ(6, read(fd, rest, sizeof rest - 1));
     CHECK_STR_EQ("hello\n", rest);
     free(line);
@@ -66,7 +66,7 @@ static void test_empty_input(void)
     size_t cap = 0;
 
     CHECK(fd >= 0);
-    CHECK_INT_EQ(-1, input_read_line(fd, &line, &cap));
+    CHECK_INT_EQ(-1, input_read_line(fd, &line, &cap, false));
     CHECK_INT_EQ(0, errno);
     CHECK(line == NULL);
     close(fd);
@@ -85,7 +85,7 @@ static void test_long_line_grows_the_buffer(void)
     /* 10,001 bytes fit in a Linux pipe (64 KB), so this doesn't block. */
     CHECK_INT_EQ(10001, write(fds[1], text, 10001));
     close(fds[1]);
-    CHECK_INT_EQ(10001, input_read_line(fds[0], &line, &cap));
+    CHECK_INT_EQ(10001, input_read_line(fds[0], &line, &cap, false));
     CHECK_STR_EQ(text, line);
     CHECK(cap > 10001);
     free(line);
@@ -97,7 +97,7 @@ static void test_read_error_sets_errno(void)
     char *line = NULL;
     size_t cap = 0;
 
-    CHECK_INT_EQ(-1, input_read_line(-1, &line, &cap));
+    CHECK_INT_EQ(-1, input_read_line(-1, &line, &cap, false));
     CHECK_INT_EQ(EBADF, errno);
 }
 

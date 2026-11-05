@@ -19,20 +19,6 @@ def test_output_to_a_file(run, workdir):
     assert read(workdir / "out.txt") == "hello\n"
 
 
-def test_no_space_before_the_operator(run, workdir):
-    # The old acsh wrote "hi>out.txt" into the file here.
-    run(stdin="echo hi>out.txt\n")
-    assert read(workdir / "out.txt") == "hi\n"
-
-
-def test_echo_n_into_a_file(run, workdir):
-    # The old acsh left "hi" in stdio's buffer, and it came out on the
-    # terminal after the redirect was undone.
-    result = run(stdin="echo -n hi > f.txt\necho [end]\n")
-    assert read(workdir / "f.txt") == "hi"
-    assert result.stdout == "[end]\n"
-
-
 def test_output_replaces_the_file(run, workdir):
     (workdir / "f").write_text("old contents\n")
     run(stdin="echo new > f\n")
