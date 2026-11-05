@@ -15,6 +15,7 @@
 #include "parser.h"
 #include "prompt.h"
 #include "shell.h"
+#include "signals.h"
 #include "version.h"
 
 static void usage(FILE *out)
@@ -36,8 +37,13 @@ static void run_line(struct shell *sh, const char *line)
         sh->status = 2;
         return;
     case PARSE_OK:
+        sh->interrupted = false;
         sh->status = run_pipeline(sh, pl);
         pipeline_free(pl);
+        /* The terminal shows ^C but no newline; start the prompt on a
+         * fresh line, as bash does. */
+        if (sh->interactive && sh->interrupted)
+            fputc('\n', stderr);
         return;
     }
 }
@@ -50,7 +56,14 @@ static int shell_loop(struct shell *sh)
     for (;;) {
         if (sh->interactive)
             prompt_print();
-        if (input_read_line(STDIN_FILENO, &line, &cap) < 0) {
+        if (input_read_line(STDIN_FILENO, &line, &cap, sh->interactive) < 0) {
+            if (errno == EINTR) {
+                /* Ctrl+C at the prompt: drop the line, start a new one.
+                 * bash sets the status to 130 here too. */
+                fputc('\n', stderr);
+                sh->status = 130;
+                continue;
+            }
             if (errno != 0)
                 fprintf(stderr, "acsh: reading input: %s\n", strerror(errno));
             else if (sh->interactive)
@@ -60,6 +73,8 @@ static int shell_loop(struct shell *sh)
         run_line(sh, line);
         if (sh->exiting)
             break;
+        if (sh->interactive)
+            signals_drop_pending();
     }
     free(line);
     return sh->status;
@@ -85,5 +100,7 @@ int main(int argc, char **argv)
 
     /* POSIX: a shell is interactive when stdin and stderr are terminals. */
     sh.interactive = isatty(STDIN_FILENO) && isatty(STDERR_FILENO);
+    if (sh.interactive)
+        signals_init_interactive();
     return shell_loop(&sh);
 }

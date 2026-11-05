@@ -13,6 +13,7 @@
 #include "builtins.h"
 #include "lexer.h"
 #include "redirect.h"
+#include "signals.h"
 #include "xalloc.h"
 
 /* The command's words without their quotes, NULL-terminated for execvp. */
@@ -81,16 +82,20 @@ int exit_status_from_wait(int wstatus)
     return 1;
 }
 
-static int wait_for(pid_t pid)
+static int wait_for(struct shell *sh, pid_t pid)
 {
     int wstatus;
 
+    /* Ctrl+C reaches the shell too and interrupts waitpid with EINTR. The
+     * child got the same signal, so keep waiting for it. */
     while (waitpid(pid, &wstatus, 0) < 0) {
         if (errno != EINTR) {
             fprintf(stderr, "acsh: waitpid: %s\n", strerror(errno));
             return 1;
         }
     }
+    if (WIFSIGNALED(wstatus) && WTERMSIG(wstatus) == SIGINT)
+        sh->interrupted = true;
     return exit_status_from_wait(wstatus);
 }
 
@@ -185,6 +190,8 @@ static int run_forked(struct shell *sh, const struct pipeline *pl)
             break;
         }
         if (pid == 0) {
+            if (sh->interactive)
+                signals_reset_in_child();
             if (prev_read >= 0 && prev_read != STDIN_FILENO) {
                 dup2(prev_read, STDIN_FILENO);
                 close(prev_read);
@@ -211,7 +218,7 @@ static int run_forked(struct shell *sh, const struct pipeline *pl)
     /* Wait for all of them, so none is left as a zombie. The pipeline's
      * status is the last command's, as in POSIX sh without pipefail. */
     for (size_t i = 0; i < started; i++) {
-        int s = wait_for(pids[i]);
+        int s = wait_for(sh, pids[i]);
 
         if (i == n - 1)
             status = s;
