@@ -32,6 +32,15 @@ enum mode {
     MODE_ASSIGN, /* assignment values: one string, ~ after : too */
 };
 
+/* "$@" gives one word per parameter, even inside quotes, so the text has
+ * to say where a word must end whatever IFS is: a break. In "$@" each
+ * parameter is a word, even an empty one; in an unquoted $@ an empty one
+ * disappears. */
+struct field_break {
+    size_t pos;
+    bool quoted;
+};
+
 /* The text so far, with an origin per byte. quotes[] holds every position
  * where a pair of quotes started: "" adds no bytes, but still means "there
  * is a word here", so `""` is one empty argument while an empty $X is none. */
@@ -43,6 +52,9 @@ struct xbuf {
     size_t *quotes;
     size_t nquotes;
     size_t quotes_cap;
+    struct field_break *breaks;
+    size_t nbreaks;
+    size_t breaks_cap;
 };
 
 static void put(struct xbuf *b, char c, enum origin o)
@@ -72,6 +84,15 @@ static void mark_quotes(struct xbuf *b)
     b->quotes[b->nquotes++] = b->len;
 }
 
+static void mark_break(struct xbuf *b, bool quoted)
+{
+    if (b->nbreaks == b->breaks_cap) {
+        b->breaks_cap = b->breaks_cap ? b->breaks_cap * 2 : 4;
+        b->breaks = xreallocarray(b->breaks, b->breaks_cap, sizeof *b->breaks);
+    }
+    b->breaks[b->nbreaks++] = (struct field_break){ .pos = b->len, .quoted = quoted };
+}
+
 static char *xbuf_string(const struct xbuf *b, size_t from, size_t to)
 {
     return xstrndup(b->text ? b->text + from : "", to - from);
@@ -82,6 +103,7 @@ static void xbuf_free(struct xbuf *b)
     free(b->text);
     free(b->origin);
     free(b->quotes);
+    free(b->breaks);
     *b = (struct xbuf){ 0 };
 }
 
@@ -123,13 +145,47 @@ static void expand_tilde(const struct shell *sh, const char *word, size_t *i,
 
 /* ---- step 2: parameters ------------------------------------------------- */
 
-/* $?, $$ and $0 into buf; false if name isn't one of them. */
+static bool all_digits(const char *s, size_t n)
+{
+    for (size_t i = 0; i < n; i++) {
+        if (s[i] < '0' || s[i] > '9')
+            return false;
+    }
+    return n > 0;
+}
+
+/* $1, ${10}: the parameter, or NULL if there are fewer. */
+static const char *positional(const struct shell *sh, const char *digits, size_t n)
+{
+    size_t index = 0;
+
+    for (size_t i = 0; i < n; i++) {
+        if (index > sh->params.len)
+            return NULL; /* far past the end, and no overflow */
+        index = index * 10 + (size_t)(digits[i] - '0');
+    }
+    if (index == 0 || index > sh->params.len)
+        return NULL;
+    return sh->params.items[index - 1];
+}
+
+/* $?, $$, $#, $0 and $1 to $9 (or ${10} and up) into value, which may point
+ * into buf. False if name isn't one of them; $@ and $* are handled apart. */
 static bool special_value(const struct shell *sh, const char *name, size_t n,
                           char *buf, size_t size, const char **value)
 {
+    if (all_digits(name, n) && !(n > 1 && name[0] == '0')) {
+        *value = name[0] == '0' ? (sh->name ? sh->name : "acsh")
+                                : positional(sh, name, n);
+        return true;
+    }
     if (n != 1)
         return false;
     switch (name[0]) {
+    case '#':
+        snprintf(buf, size, "%zu", sh->params.len);
+        *value = buf;
+        return true;
     case '?':
         snprintf(buf, size, "%d", sh->status);
         *value = buf;
@@ -138,11 +194,43 @@ static bool special_value(const struct shell *sh, const char *name, size_t n,
         snprintf(buf, size, "%ld", (long)sh->pid);
         *value = buf;
         return true;
-    case '0':
-        *value = sh->name ? sh->name : "acsh";
-        return true;
     default:
         return false;
+    }
+}
+
+/* What separates the parameters in "$*": the first character of IFS, a
+ * space when IFS is unset, nothing when it's empty. */
+static const char *star_separator(const struct shell *sh, char *buf)
+{
+    const char *ifs = vars_get(&sh->vars, "IFS");
+
+    buf[0] = ifs == NULL ? ' ' : ifs[0];
+    buf[1] = '\0';
+    return buf;
+}
+
+/*
+ * $@ and $*. Where the result becomes command words, $@ (and an unquoted
+ * $*) gives one word per parameter, with breaks in between. "$*" and both
+ * in an assignment or a redirection give one string, joined with a space
+ * ($@) or the first character of IFS ($*).
+ */
+static void put_params(const struct shell *sh, struct xbuf *b, char which,
+                       enum origin o, enum mode mode)
+{
+    bool words = mode == MODE_FIELDS && (which == '@' || o == FROM_SPLIT);
+    char sep_buf[2];
+    const char *sep = which == '*' ? star_separator(sh, sep_buf) : " ";
+
+    for (size_t i = 0; i < sh->params.len; i++) {
+        if (i > 0) {
+            if (words)
+                mark_break(b, o == FROM_QUOTED);
+            else
+                put_str(b, sep, o);
+        }
+        put_str(b, sh->params.items[i], o);
     }
 }
 
@@ -162,7 +250,8 @@ static const char *lookup(const struct shell *sh, const char *name, size_t n)
  * `echo $` or `echo 5$`. An unset variable adds nothing.
  */
 static bool expand_dollar(const struct shell *sh, const char *word, size_t *i,
-                          struct xbuf *b, enum origin o, char *err, size_t errlen)
+                          struct xbuf *b, enum origin o, enum mode mode,
+                          char *err, size_t errlen)
 {
     const char *p = word + *i + 1;
     const char *name = p;
@@ -183,6 +272,11 @@ static bool expand_dollar(const struct shell *sh, const char *word, size_t *i,
         }
         name = p + 1;
         n = (size_t)(close - name);
+        if (n == 1 && (name[0] == '@' || name[0] == '*')) {
+            put_params(sh, b, name[0], o, mode);
+            *i = (size_t)(close - word) + 1;
+            return true;
+        }
         if (!special_value(sh, name, n, num, sizeof num, &value)) {
             if (n == 0 || var_name_len(name) != n) {
                 snprintf(err, errlen, "${%.*s}: bad substitution", (int)n, name);
@@ -194,6 +288,10 @@ static bool expand_dollar(const struct shell *sh, const char *word, size_t *i,
     } else if ((n = var_name_len(p)) > 0) {
         value = lookup(sh, p, n);
         *i += 1 + n;
+    } else if (*p == '@' || *p == '*') {
+        put_params(sh, b, *p, o, mode);
+        *i += 2;
+        return true;
     } else if (special_value(sh, p, 1, num, sizeof num, &value)) {
         *i += 2;
     } else {
@@ -254,7 +352,7 @@ static bool scan_word(const struct shell *sh, const char *w, struct xbuf *b,
                         put(b, w[i + 1], FROM_QUOTED);
                     i += 2;
                 } else if (w[i] == '$') {
-                    if (!expand_dollar(sh, w, &i, b, FROM_QUOTED, err, errlen))
+                    if (!expand_dollar(sh, w, &i, b, FROM_QUOTED, mode, err, errlen))
                         return false;
                 } else if (w[i] == '`') {
                     return backquote_error(err, errlen);
@@ -271,7 +369,7 @@ static bool scan_word(const struct shell *sh, const char *w, struct xbuf *b,
         } else if (c == '$') {
             enum origin o = mode == MODE_FIELDS ? FROM_SPLIT : FROM_QUOTED;
 
-            if (!expand_dollar(sh, w, &i, b, o, err, errlen))
+            if (!expand_dollar(sh, w, &i, b, o, mode, err, errlen))
                 return false;
         } else if (c == '`') {
             return backquote_error(err, errlen);
@@ -335,16 +433,26 @@ static void split_fields(const struct shell *sh, const struct xbuf *b, struct st
     const char *ifs = vars_get(&sh->vars, "IFS");
     size_t start = 0; /* where the current field starts */
     size_t q = 0;     /* next entry in b->quotes */
+    size_t k = 0;     /* next entry in b->breaks */
     bool content = false;
     size_t i = 0;
 
     if (ifs == NULL)
         ifs = " \t\n";
-    while (i < b->len) {
+    for (;;) {
+        while (k < b->nbreaks && b->breaks[k].pos <= i) {
+            if (content || b->breaks[k].quoted)
+                add_field(b, start, i, out);
+            start = i;
+            content = b->breaks[k].quoted; /* "$@": even an empty one counts */
+            k++;
+        }
         while (q < b->nquotes && b->quotes[q] <= i) {
             content = true;
             q++;
         }
+        if (i >= b->len)
+            break;
         if (b->origin[i] == FROM_SPLIT && is_ifs(ifs, b->text[i])) {
             size_t run = i;
             bool hard = false; /* the separator has a non-space IFS character */
@@ -352,6 +460,8 @@ static void split_fields(const struct shell *sh, const struct xbuf *b, struct st
             while (i < b->len && b->origin[i] == FROM_SPLIT && is_ifs(ifs, b->text[i])) {
                 if (i > run && q < b->nquotes && b->quotes[q] == i)
                     break; /* "" between two separators is a field of its own */
+                if (i > run && k < b->nbreaks && b->breaks[k].pos == i)
+                    break; /* so is the start of the next parameter */
                 if (!is_ifs_space(ifs, b->text[i])) {
                     if (hard)
                         break;
@@ -368,8 +478,6 @@ static void split_fields(const struct shell *sh, const struct xbuf *b, struct st
         content = true;
         i++;
     }
-    if (q < b->nquotes)
-        content = true;
     if (content)
         add_field(b, start, b->len, out);
 }
@@ -409,6 +517,8 @@ bool expand_command(struct shell *sh, char *const *words, size_t nwords,
         const char *w = words[i];
         size_t n = var_name_len(w);
 
+        if (sh->params.len == 0 && (strcmp(w, "\"$@\"") == 0 || strcmp(w, "\"${@}\"") == 0))
+            continue; /* "$@" with no parameters: not even an empty word */
         if (declaration && i > 0 && n > 0 && w[n] == '=') {
             char *value = expand_assignment(sh, w + n + 1, err, errlen);
             char *arg;

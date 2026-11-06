@@ -2,6 +2,7 @@
 
 import os
 
+import pexpect
 import pytest
 
 
@@ -110,10 +111,23 @@ def test_syntax_error_status_and_message(run):
     assert result.stderr == "acsh: line ends with '|'\n"
     assert result.returncode == 2
 
-    result = run(stdin="| ls\necho after\n")
+    # A script stops at a syntax error, as in bash and dash: the lines after
+    # it may depend on the broken one.
+    result = run(stdin="echo before\n| ls\necho after\n")
     assert result.stderr == "acsh: syntax error near '|'\n"
-    assert result.stdout == "after\n"
-    assert result.returncode == 0
+    assert result.stdout == "before\n"
+    assert result.returncode == 2
+
+
+def test_prompt_goes_on_after_a_syntax_error(terminal):
+    shell = terminal()
+    shell.expect(r"\$ ")
+    shell.sendline("| ls")
+    shell.expect("acsh: syntax error near '\\|'")
+    shell.sendline("echo $?; echo still here")
+    shell.expect("2\r\nstill here")
+    shell.sendline("exit")
+    shell.expect(pexpect.EOF)
 
 
 def test_unclosed_quote_is_an_error(run):

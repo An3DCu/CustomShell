@@ -20,6 +20,9 @@ enum token_type {
     TOK_AMP,      /* &  */
     TOK_AND,      /* && */
     TOK_SEMI,     /* ;  */
+    TOK_NEWLINE,  /* a newline: ends a command, like ; */
+    TOK_LPAREN,   /* (  */
+    TOK_RPAREN,   /* )  */
     TOK_LESS,     /* <  */
     TOK_GREAT,    /* >  */
     TOK_DGREAT,   /* >> */
@@ -43,7 +46,8 @@ struct token_list {
 
 enum lex_status {
     LEX_OK,
-    LEX_INCOMPLETE, /* the line stops inside a quote or after a backslash */
+    LEX_INCOMPLETE, /* the text stops inside a quote or after a backslash:
+                     * the shell reads another line and tries again */
 };
 
 /*

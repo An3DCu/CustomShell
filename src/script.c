@@ -1,0 +1,159 @@
+#include "script.h"
+
+#include <errno.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+#include "exec.h"
+#include "input.h"
+#include "parser.h"
+#include "prompt.h"
+#include "signals.h"
+#include "vars.h"
+#include "xalloc.h"
+
+/* The next line of the -c text, newline included, like input_read_line. */
+static ssize_t read_text_line(struct reader *r, char **line, size_t *cap)
+{
+    const char *start = r->text + r->pos;
+    const char *nl = strchr(start, '\n');
+    size_t len = nl ? (size_t)(nl - start) + 1 : strlen(start);
+
+    if (len == 0) {
+        errno = 0;
+        return -1;
+    }
+    if (len + 1 > *cap) {
+        *cap = len + 1;
+        *line = xreallocarray(*line, *cap, 1);
+    }
+    memcpy(*line, start, len);
+    (*line)[len] = '\0';
+    r->pos += len;
+    return (ssize_t)len;
+}
+
+static ssize_t read_line(struct reader *r, char **line, size_t *cap)
+{
+    if (r->fd < 0)
+        return read_text_line(r, line, cap);
+    return input_read_line(r->fd, line, cap, r->interactive);
+}
+
+/* The text of a command that spans lines so far. */
+struct pending {
+    char *text;
+    size_t len;
+    size_t cap;
+};
+
+static void pending_add(struct pending *p, const char *line, size_t n)
+{
+    if (p->len + n + 1 > p->cap) {
+        p->cap = (p->len + n + 1) * 2;
+        p->text = xreallocarray(p->text, p->cap, 1);
+    }
+    memcpy(p->text + p->len, line, n + 1);
+    p->len += n;
+}
+
+static void run_text(struct shell *sh, const struct list *list)
+{
+    sh->interrupted = false;
+    run_list(sh, list);
+    /* The terminal shows ^C but no newline; start the prompt on a fresh
+     * line, as bash does. */
+    if (sh->interactive && sh->interrupted)
+        fputc('\n', stderr);
+}
+
+int script_run(struct shell *sh, struct reader *r)
+{
+    struct pending cmd = { 0 };
+    char *line = NULL;
+    size_t cap = 0;
+    char err[256] = "";
+    bool ran = false;
+
+    for (;;) {
+        struct list *list;
+        enum parse_status st;
+        ssize_t n;
+
+        if (r->interactive) {
+            if (cmd.len == 0)
+                prompt_print(vars_get(&sh->vars, "HOME"));
+            else
+                fputs("> ", stderr); /* the command isn't finished yet */
+        }
+        n = read_line(r, &line, &cap);
+        if (n < 0) {
+            if (errno == EINTR) {
+                /* Ctrl+C at the prompt: drop what was typed, start again.
+                 * bash sets the status to 130 here too. */
+                fputc('\n', stderr);
+                cmd.len = 0;
+                sh->status = 130;
+                ran = true;
+                continue;
+            }
+            if (errno != 0) {
+                fprintf(stderr, "acsh: reading input: %s\n", strerror(errno));
+            } else if (cmd.len > 0) {
+                /* The input ended in the middle of a command. */
+                fprintf(stderr, "acsh: %s\n", err);
+                sh->status = 2;
+                ran = true;
+            } else if (r->interactive) {
+                fputc('\n', stderr); /* Ctrl+D: end the prompt's line */
+            }
+            break;
+        }
+        pending_add(&cmd, line, (size_t)n);
+        st = parse_program(cmd.text, &list, err, sizeof err);
+        if (st == PARSE_INCOMPLETE)
+            continue;
+        cmd.len = 0;
+        if (st == PARSE_EMPTY)
+            continue; /* an empty line keeps the last status, as in bash */
+        ran = true;
+        if (st == PARSE_SYNTAX) {
+            fprintf(stderr, "acsh: %s\n", err);
+            sh->status = 2;
+            if (!r->interactive)
+                break;
+            continue;
+        }
+        run_text(sh, list);
+        list_free(list);
+        if (sh->exiting)
+            break;
+        if (r->interactive)
+            signals_drop_pending();
+    }
+    free(cmd.text);
+    free(line);
+    return ran ? sh->status : 0;
+}
+
+int script_open(const char *path)
+{
+    struct stat st;
+    int fd = open(path, O_RDONLY | O_CLOEXEC);
+    int high;
+
+    if (fd < 0)
+        return -1;
+    if (fstat(fd, &st) == 0 && S_ISDIR(st.st_mode)) {
+        close(fd);
+        errno = EISDIR;
+        return -1;
+    }
+    high = fcntl(fd, F_DUPFD_CLOEXEC, 10);
+    close(fd);
+    return high; /* -1 with errno set if even that failed */
+}

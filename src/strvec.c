@@ -1,6 +1,7 @@
 #include "strvec.h"
 
 #include <stdlib.h>
+#include <string.h>
 
 #include "xalloc.h"
 
@@ -28,6 +29,16 @@ char **strvec_items(struct strvec *v)
         v->items[0] = NULL;
     }
     return v->items;
+}
+
+void strvec_remove_front(struct strvec *v, size_t n)
+{
+    for (size_t i = 0; i < n; i++)
+        free(v->items[i]);
+    if (v->items != NULL) {
+        memmove(v->items, v->items + n, (v->len - n + 1) * sizeof *v->items); /* + the NULL */
+        v->len -= n;
+    }
 }
 
 void strvec_free(struct strvec *v)

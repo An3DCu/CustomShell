@@ -1,22 +1,31 @@
 #ifndef ACSH_PARSER_H
 #define ACSH_PARSER_H
 
+#include <stdbool.h>
 #include <stddef.h>
 
 /*
  * The parser turns tokens into a tree the shell can run:
  *
- *     ls -l | grep c > n.txt
+ *     make && ./run | tee log; echo done
  *
- *     pipeline
- *       command  words: ls -l
- *       command  words: grep c   redirections: 1 > n.txt
+ *     list
+ *       and-or
+ *         pipeline   command  words: make
+ *         pipeline   (only if the one before succeeded)
+ *                    command  words: ./run
+ *                    command  words: tee log
+ *       and-or
+ *         pipeline   command  words: echo done
  *
  * Words, assignments and redirection targets are kept as typed (quotes and
  * $ included); they are only expanded when the command runs. Grammar for
- * now:
+ * now, where newline means one or more newlines:
  *
- *     pipeline    = command { "|" command }
+ *     program     = [newline] [list] [newline]
+ *     list        = and_or { ( ";" | newline ) and_or } [";"]
+ *     and_or      = pipeline { ( "&&" | "||" ) [newline] pipeline }
+ *     pipeline    = ["!"] command { "|" [newline] command }
  *     command     = ( word | redirection ) { word | redirection }
  *     redirection = [fd] ( "<" | ">" | ">>" | "<&" | ">&" ) word
  *
@@ -50,26 +59,49 @@ struct command {
     size_t nredirs;
 };
 
+/* When a pipeline in an and-or runs, decided by the status before it. */
+enum run_if {
+    RUN_ALWAYS,    /* the first one */
+    RUN_IF_OK,     /* after && */
+    RUN_IF_FAILED, /* after || */
+};
+
 struct pipeline {
     struct command *commands;
     size_t ncommands;
+    bool negate;          /* ! in front: 0 becomes 1, anything else 0 */
+    enum run_if run_if;
+};
+
+/* a && b || c */
+struct and_or {
+    struct pipeline *pipelines;
+    size_t npipelines;
+};
+
+/* a; b, or a and b on two lines */
+struct list {
+    struct and_or *items;
+    size_t nitems;
 };
 
 enum parse_status {
     PARSE_OK,
-    PARSE_EMPTY,      /* nothing but blanks */
-    PARSE_INCOMPLETE, /* the line stops too early: open quote, ends with | */
+    PARSE_EMPTY,      /* nothing but blanks, newlines and comments */
+    PARSE_INCOMPLETE, /* the text stops too early: open quote, ends with | or && */
     PARSE_SYNTAX,     /* something is in the wrong place */
 };
 
 /*
- * Parses one line. On PARSE_OK, *out is a new pipeline to free with
- * pipeline_free. Otherwise *out is NULL, and for PARSE_INCOMPLETE and
- * PARSE_SYNTAX err says what's wrong, e.g. "syntax error near '|'".
+ * Parses text, which may hold several lines. On PARSE_OK, *out is a new
+ * list to free with list_free. Otherwise *out is NULL, and for
+ * PARSE_INCOMPLETE and PARSE_SYNTAX err says what's wrong, e.g.
+ * "syntax error near '|'". On PARSE_INCOMPLETE the shell reads another
+ * line, adds it to text and calls this again.
  */
-enum parse_status parse_line(const char *line, struct pipeline **out,
-                             char *err, size_t errlen);
+enum parse_status parse_program(const char *text, struct list **out,
+                                char *err, size_t errlen);
 
-void pipeline_free(struct pipeline *pipeline);
+void list_free(struct list *list);
 
 #endif

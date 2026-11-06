@@ -52,7 +52,7 @@ static const char *describe(const char *line)
 static void test_words_and_blanks(void)
 {
     CHECK_LEX("echo hi", "[echo] [hi]");
-    CHECK_LEX("  echo \t  hi  \n", "[echo] [hi]");
+    CHECK_LEX("  echo \t  hi  \n", "[echo] [hi] newline");
     CHECK_LEX("ls", "[ls]");
 }
 
@@ -60,7 +60,7 @@ static void test_empty_lines(void)
 {
     CHECK_LEX("", "");
     CHECK_LEX("   ", "");
-    CHECK_LEX("\n", "");
+    CHECK_LEX("\n", "newline");
 }
 
 static void test_operators_need_no_spaces(void)
@@ -144,6 +144,43 @@ static void test_unfinished_lines(void)
     CHECK_LEX("echo abc\\\n", "error: line ends with a backslash");
 }
 
+static void test_newlines_are_tokens(void)
+{
+    CHECK_LEX("a\nb\n", "[a] newline [b] newline");
+    CHECK_LEX("a;\n\nb", "[a] ; newline newline [b]");
+    CHECK_LEX("echo 'a\nb'", "[echo] ['a\nb']");     /* inside quotes it's text */
+    CHECK_LEX("echo \"a\nb\"", "[echo] [\"a\nb\"]");
+}
+
+static void test_comments(void)
+{
+    CHECK_LEX("echo a # rest | of > line", "[echo] [a]");
+    CHECK_LEX("# all of it", "");
+    CHECK_LEX("echo a#b", "[echo] [a#b]");             /* not at a word's start */
+    CHECK_LEX("echo '#' \"#\" \\#", "[echo] ['#'] [\"#\"] [\\#]");
+    CHECK_LEX("a # c\nb", "[a] newline [b]");         /* ends at the newline */
+    CHECK_LEX("a;#c", "[a] ;");
+    CHECK_LEX("a # it's", "[a]");                    /* no quotes in a comment */
+}
+
+static void test_backslash_newline_joins_lines(void)
+{
+    CHECK_LEX("echo a \\\nb", "[echo] [a] [b]");
+    CHECK_LEX("echo a\\\nb", "[echo] [a\\\nb]");  /* one word */
+    CHECK_LEX("\\\necho", "[echo]");
+    CHECK_LEX("echo 'a\\\nb'", "[echo] ['a\\\nb']"); /* kept in single quotes */
+}
+
+static void test_parentheses(void)
+{
+    CHECK_LEX("(a)", "( [a] )");
+    CHECK_LEX("echo a)b", "[echo] [a] ) [b]");
+    CHECK_LEX("echo '(' \"()\"", "[echo] ['('] [\"()\"]");
+    CHECK_LEX("echo $(ls -l | wc) x", "[echo] [$(ls -l | wc)] [x]");
+    CHECK_LEX("echo a$(b(c))d", "[echo] [a$(b(c))d]");
+    CHECK_LEX("echo $(ls", "error: unclosed '$('");
+}
+
 static void test_error_leaves_list_empty(void)
 {
     struct token_list tokens;
@@ -200,6 +237,10 @@ int main(void)
     RUN(test_quoted_operators_are_words);
     RUN(test_backslashes);
     RUN(test_unfinished_lines);
+    RUN(test_newlines_are_tokens);
+    RUN(test_comments);
+    RUN(test_backslash_newline_joins_lines);
+    RUN(test_parentheses);
     RUN(test_error_leaves_list_empty);
     RUN(test_positions);
     RUN(test_long_line);

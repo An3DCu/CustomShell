@@ -309,7 +309,7 @@ static int run_forked(struct shell *sh, const struct pipeline *pl, char **first_
     return failed ? 1 : status;
 }
 
-int run_pipeline(struct shell *sh, const struct pipeline *pl)
+static int run_pipeline(struct shell *sh, const struct pipeline *pl)
 {
     const struct command *cmd = &pl->commands[0];
     struct strvec argv = { 0 };
@@ -334,4 +334,39 @@ int run_pipeline(struct shell *sh, const struct pipeline *pl)
         status = run_forked(sh, pl, av);
     strvec_free(&argv);
     return status;
+}
+
+/* Whether the pipeline after && or || runs, given the status so far. */
+static bool should_run(const struct pipeline *pl, int status)
+{
+    switch (pl->run_if) {
+    case RUN_IF_OK:     return status == 0;
+    case RUN_IF_FAILED: return status != 0;
+    case RUN_ALWAYS:    break;
+    }
+    return true;
+}
+
+int run_list(struct shell *sh, const struct list *list)
+{
+    for (size_t i = 0; i < list->nitems; i++) {
+        const struct and_or *ao = &list->items[i];
+
+        /* a && b || c: each pipeline looks at the status of whatever ran
+         * last, so in `false && x || y` the skipped x leaves 1 for y. */
+        for (size_t j = 0; j < ao->npipelines; j++) {
+            const struct pipeline *pl = &ao->pipelines[j];
+            int status;
+
+            if (!should_run(pl, sh->status))
+                continue;
+            status = run_pipeline(sh, pl);
+            if (pl->negate)
+                status = status == 0 ? 1 : 0;
+            sh->status = status;
+            if (sh->exiting || sh->interrupted)
+                return sh->status;
+        }
+    }
+    return sh->status;
 }

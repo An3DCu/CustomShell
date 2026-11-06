@@ -7,16 +7,25 @@
 
 #include "xalloc.h"
 
-/* A newline counts as a blank for now: lines arrive one at a time. Scripts
- * will need it as a separator. */
+/* Spaces and tabs separate words. A newline is a token of its own: like
+ * ;, it ends a command. */
 static bool is_blank(char c)
 {
-    return c == ' ' || c == '\t' || c == '\n';
+    return c == ' ' || c == '\t';
+}
+
+/* A backslash right before a newline joins two lines, as if neither was
+ * there (POSIX 2.2.1). Only when another line follows: at the very end
+ * the lexer reports it, so the shell can read the next line. */
+static bool is_line_join(const char *s)
+{
+    return s[0] == '\\' && s[1] == '\n' && s[2] != '\0';
 }
 
 static bool is_operator_char(char c)
 {
-    return c == '|' || c == '&' || c == ';' || c == '<' || c == '>';
+    return c == '|' || c == '&' || c == ';' || c == '<' || c == '>'
+        || c == '(' || c == ')';
 }
 
 static bool is_digit(char c)
@@ -59,6 +68,10 @@ static enum token_type read_operator(const char *line, size_t *i)
         return TOK_AMP;
     case ';':
         return TOK_SEMI;
+    case '(':
+        return TOK_LPAREN;
+    case ')':
+        return TOK_RPAREN;
     case '<':
         if (next == '&') {
             *i += 1;
@@ -90,7 +103,8 @@ static bool scan_word(const char *line, size_t start, size_t *end, bool *quoted,
     size_t i = start;
 
     *quoted = false;
-    while (line[i] != '\0' && !is_blank(line[i]) && !is_operator_char(line[i])) {
+    while (line[i] != '\0' && line[i] != '\n' && !is_blank(line[i])
+           && !is_operator_char(line[i])) {
         if (line[i] == '\'') {
             const char *close = strchr(line + i + 1, '\'');
 
@@ -115,6 +129,24 @@ static bool scan_word(const char *line, size_t start, size_t *end, bool *quoted,
                 i++;
             }
             i++;
+        } else if (line[i] == '$' && line[i + 1] == '(') {
+            /* $(...) belongs to the word, parentheses and all, so the
+             * expansion can say it isn't supported instead of the ( being
+             * read as an operator. */
+            int depth = 0;
+
+            i++; /* past the $, so the loop starts at the ( */
+            do {
+                if (line[i] == '\0') {
+                    snprintf(err, errlen, "unclosed '$('");
+                    return false;
+                }
+                if (line[i] == '(')
+                    depth++;
+                else if (line[i] == ')')
+                    depth--;
+                i++;
+            } while (depth > 0);
         } else if (line[i] == '\\') {
             *quoted = true;
             /* getline keeps the newline, so "echo a\" arrives as "echo a\\\n". */
@@ -165,12 +197,25 @@ enum lex_status lex(const char *line, struct token_list *out, char *err, size_t 
         size_t start, end;
         bool quoted;
 
-        while (is_blank(line[i]))
-            i++;
+        while (is_blank(line[i]) || is_line_join(line + i))
+            i += is_blank(line[i]) ? 1 : 2;
         start = i;
         if (line[i] == '\0') {
             push(out, TOK_END, NULL, -1, start);
             return LEX_OK;
+        }
+        if (line[i] == '#') {
+            /* A comment, but only where a word would start: echo a#b
+             * prints a#b. It runs to the end of the line, newline not
+             * included, and a backslash in it joins nothing. */
+            while (line[i] != '\0' && line[i] != '\n')
+                i++;
+            continue;
+        }
+        if (line[i] == '\n') {
+            push(out, TOK_NEWLINE, NULL, -1, start);
+            i++;
+            continue;
         }
         if (is_operator_char(line[i])) {
             enum token_type type = read_operator(line, &i);
@@ -220,6 +265,9 @@ const char *token_spelling(const struct token *tok)
     case TOK_AMP:      return "&";
     case TOK_AND:      return "&&";
     case TOK_SEMI:     return ";";
+    case TOK_NEWLINE:  return "newline";
+    case TOK_LPAREN:   return "(";
+    case TOK_RPAREN:   return ")";
     case TOK_LESS:     return "<";
     case TOK_GREAT:    return ">";
     case TOK_DGREAT:   return ">>";
