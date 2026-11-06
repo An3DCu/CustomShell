@@ -35,6 +35,6 @@ struct redir_undo {
 bool redir_apply(struct shell *sh, const struct command *cmd, struct redir_undo *undo);
 
 /* Puts every saved fd back and empties undo. */
-void redir_restore(struct redir_undo *undo);
+void redir_restore(struct shell *sh, struct redir_undo *undo);
 
 #endif

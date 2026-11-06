@@ -9,6 +9,7 @@
 #include <unistd.h>
 
 #include "exec.h"
+#include "explain.h"
 #include "input.h"
 #include "parser.h"
 #include "prompt.h"
@@ -63,8 +64,17 @@ static void pending_add(struct pending *p, const char *line, size_t n)
 
 static void run_text(struct shell *sh, const struct list *list)
 {
+    bool was = sh->explaining;
+    bool explain = list->explain || sh->explain_all || sh->explaining;
+
     sh->interrupted = false;
+    if (explain && explain_start(sh)) {
+        sh->explaining = true;
+        explain_plan(sh, list);
+    }
     run_list(sh, list);
+    explain_status(sh, sh->status);
+    sh->explaining = was;
     /* The terminal shows ^C but no newline; start the prompt on a fresh
      * line, as bash does. */
     if (sh->interactive && sh->interrupted)

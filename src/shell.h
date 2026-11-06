@@ -20,6 +20,10 @@ struct shell {
     int loop_depth;   /* how many while, until and for loops are running */
     int breaks;       /* break n: how many loops still have to end */
     int continues;    /* continue n: the same, the last one goes on instead */
+    bool explain_all; /* set -o explain or --explain: explain every line */
+    bool explaining;  /* the line running now is being explained */
+    int explain_fd;   /* the copy of stderr explain mode writes to; 0 until it starts */
+    int explain_out;  /* where explain lines go now: explain_fd, or a child's report pipe */
     struct vars vars;
 };
 

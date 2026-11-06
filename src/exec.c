@@ -1,6 +1,7 @@
 #include "exec.h"
 
 #include <errno.h>
+#include <fcntl.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -12,6 +13,7 @@
 
 #include "builtins.h"
 #include "expand.h"
+#include "explain.h"
 #include "redirect.h"
 #include "signals.h"
 #include "strvec.h"
@@ -37,8 +39,10 @@ static bool expand_argv(struct shell *sh, const struct command *cmd, struct strv
 
 /* Expands and sets each NAME=value of cmd, left to right, so B=$A sees an A
  * set just before it. In a child about to exec, export them too: that's
- * what puts X=1 into the environment of `X=1 cmd`. */
-static bool apply_assignments(struct shell *sh, const struct command *cmd, bool export)
+ * what puts X=1 into the environment of `X=1 cmd`. note says for how long,
+ * for explain mode. */
+static bool apply_assignments(struct shell *sh, const struct command *cmd, bool export,
+                              const char *note)
 {
     for (size_t i = 0; i < cmd->nassigns; i++) {
         const char *a = cmd->assigns[i];
@@ -55,6 +59,7 @@ static bool apply_assignments(struct shell *sh, const struct command *cmd, bool 
         vars_set(&sh->vars, name, value);
         if (export)
             vars_export(&sh->vars, name);
+        explain_event(sh, note, "set %s=%s", name, value);
         free(name);
         free(value);
     }
@@ -90,6 +95,7 @@ static void restore_assigned(struct shell *sh, struct saved_var *saved, size_t n
     for (size_t i = n; i-- > 0;) {
         struct saved_var *s = &saved[i];
 
+        explain_event(sh, "it was only for this built-in", "%s back as it was", s->name);
         if (!s->existed) {
             vars_unset(&sh->vars, s->name);
         } else if (s->value != NULL) {
@@ -153,6 +159,13 @@ static int wait_for(struct shell *sh, pid_t pid)
     }
     if (WIFSIGNALED(wstatus) && WTERMSIG(wstatus) == SIGINT)
         sh->interrupted = true;
+    if (explain_on(sh)) {
+        if (WIFEXITED(wstatus))
+            explain_event(sh, NULL, "waitpid(%ld) = exit %d", (long)pid, WEXITSTATUS(wstatus));
+        else if (WIFSIGNALED(wstatus))
+            explain_event(sh, strsignal(WTERMSIG(wstatus)), "waitpid(%ld) = killed by signal %d",
+                          (long)pid, WTERMSIG(wstatus));
+    }
     return exit_status_from_wait(wstatus);
 }
 
@@ -176,10 +189,13 @@ static bool loop_ends(struct shell *sh)
         return true;
     if (sh->breaks > 0) {
         sh->breaks--;
+        explain_event(sh, NULL, "break: the loop ends");
         return true;
     }
     if (sh->continues > 0) {
         sh->continues--;
+        explain_event(sh, NULL, sh->continues > 0 ? "continue: this loop ends, an outer one goes on"
+                                                  : "continue: on to the next round");
         return sh->continues > 0;
     }
     if (signals_take_interrupt()) {
@@ -204,9 +220,14 @@ static int run_if(struct shell *sh, const struct command *cmd)
 {
     for (size_t i = 0; i < cmd->nbranches; i++) {
         int cond = run_list(sh, cmd->branches[i].cond);
+        bool more = i + 1 < cmd->nbranches;
 
         if (cut_short(sh))
             return sh->status;
+        explain_event(sh, cond == 0 ? "so: then"
+                          : more ? "so: try the elif"
+                          : cmd->body ? "so: else" : "so: nothing runs",
+                      "%s: the condition gave %d", i == 0 ? "if" : "elif", cond);
         if (cond == 0)
             return run_list(sh, cmd->branches[i].body);
     }
@@ -225,9 +246,14 @@ static int run_while(struct shell *sh, const struct command *cmd)
     for (;;) {
         int cond = run_list(sh, cmd->cond);
 
+        bool goes_on;
+
         if (loop_ends(sh))
             break;
-        if ((cond == 0) != (cmd->kind == CMD_WHILE))
+        goes_on = (cond == 0) == (cmd->kind == CMD_WHILE);
+        explain_event(sh, goes_on ? "so: one more round" : "so: the loop ends",
+                      "%s: the condition gave %d", cmd->kind == CMD_WHILE ? "while" : "until", cond);
+        if (!goes_on)
             break;
         status = run_list(sh, cmd->body);
         if (loop_ends(sh))
@@ -259,6 +285,8 @@ static int run_for(struct shell *sh, const struct command *cmd)
     sh->loop_depth++;
     for (size_t i = 0; i < values.len; i++) {
         vars_set(&sh->vars, cmd->var, values.items[i]);
+        explain_event(sh, NULL, "for: %s=%s, round %zu of %zu", cmd->var, values.items[i], i + 1,
+                      values.len);
         status = run_list(sh, cmd->body);
         if (loop_ends(sh))
             break;
@@ -297,8 +325,35 @@ static int run_compound_here(struct shell *sh, const struct command *cmd)
     else
         status = 1;
     fflush(stdout);
-    redir_restore(&undo);
+    redir_restore(sh, &undo);
     return status;
+}
+
+/* What a child is for, for the fork line: its command's name as typed. */
+static const char *command_name(const struct command *cmd, char **argv)
+{
+    switch (cmd->kind) {
+    case CMD_IF:     return "an if";
+    case CMD_WHILE:  return "a while loop";
+    case CMD_UNTIL:  return "an until loop";
+    case CMD_FOR:    return "a for loop";
+    case CMD_SIMPLE: break;
+    }
+    if (argv != NULL && argv[0] != NULL)
+        return argv[0];
+    return cmd->nwords > 0 ? cmd->words[0] : "a command with no name";
+}
+
+/* A child that runs a built-in or a block won't exec, so the report pipe
+ * wouldn't close on its own and the shell would wait. It says what it does
+ * and closes the pipe; anything after goes straight to the explanation. */
+static void stop_reporting(struct shell *sh, const char *what)
+{
+    if (!explain_on(sh) || sh->explain_out == sh->explain_fd)
+        return;
+    explain_event(sh, "no exec: the shell's own code does it", "%s runs in this child", what);
+    close(sh->explain_out);
+    sh->explain_out = sh->explain_fd;
 }
 
 /*
@@ -323,6 +378,7 @@ static _Noreturn void run_in_child(struct shell *sh, const struct command *cmd, 
 
         if (!redir_apply(sh, cmd, NULL))
             _exit(1);
+        stop_reporting(sh, command_name(cmd, NULL));
         status = run_compound(sh, cmd);
         fflush(stdout);
         _exit(status);
@@ -331,19 +387,23 @@ static _Noreturn void run_in_child(struct shell *sh, const struct command *cmd, 
         if (!expand_argv(sh, cmd, &own))
             _exit(2);
         argv = strvec_items(&own);
+        explain_words(sh, cmd->words, cmd->nwords, argv);
     }
     if (!redir_apply(sh, cmd, NULL))
         _exit(1);
     if (argv[0] == NULL)
         _exit(0);
-    if (!apply_assignments(sh, cmd, true))
+    if (!apply_assignments(sh, cmd, true, "only in this command's environment"))
         _exit(2);
     b = builtin_find(argv[0]);
-    if (b != NULL)
+    if (b != NULL) {
+        stop_reporting(sh, argv[0]);
         _exit(builtin_run(sh, b, argv)); /* builtin_run flushes stdout */
+    }
     /* The child's environment is built from the shell's table only now,
      * and execvp passes it on. */
     environ = vars_environ(&sh->vars);
+    explain_exec(sh, argv);
     execvp(argv[0], argv);
     err = errno;
     report_exec_error(argv[0], err);
@@ -367,22 +427,25 @@ static int run_in_shell(struct shell *sh, const struct command *cmd,
 
     /* Anything the shell printed before belongs to the old stdout. */
     fflush(stdout);
+    if (b != NULL)
+        explain_event(sh, "no fork: it runs in the shell itself", "built-in %s", argv[0]);
     if (!redir_apply(sh, cmd, &undo)) {
         status = 1;
     } else if (b == NULL) {
-        status = apply_assignments(sh, cmd, false) ? 0 : 2;
+        status = apply_assignments(sh, cmd, false, "a shell variable, it stays") ? 0 : 2;
     } else if (b->special) {
-        status = apply_assignments(sh, cmd, false) ? builtin_run(sh, b, argv) : 2;
+        status = apply_assignments(sh, cmd, false, "stays: a special built-in")
+                     ? builtin_run(sh, b, argv) : 2;
     } else {
         struct saved_var *saved = save_assigned(sh, cmd);
 
-        if (apply_assignments(sh, cmd, false))
+        if (apply_assignments(sh, cmd, false, "only while the built-in runs"))
             status = builtin_run(sh, b, argv);
         else
             status = 2;
         restore_assigned(sh, saved, cmd->nassigns);
     }
-    redir_restore(&undo);
+    redir_restore(sh, &undo);
     return status;
 }
 
@@ -397,6 +460,60 @@ static int run_in_shell(struct shell *sh, const struct command *cmd,
  * matters: a reader only sees end of input once every write end is closed,
  * so one forgotten end in the parent and `yes | head -n 1` never finishes.
  */
+/* Moves fd to 10 or above, close-on-exec, out of the way of the 0 to 9 a
+ * command may redirect. Returns the new fd, or -1. */
+static int move_high(int fd)
+{
+    int high = fcntl(fd, F_DUPFD_CLOEXEC, 10);
+
+    close(fd);
+    return high;
+}
+
+/* The pipe a child reports its explain lines through. Both ends are high
+ * and close-on-exec, so the shell sees end of file once the child's exec
+ * has worked, or once it exits. */
+static bool report_pipe(int fds[2])
+{
+    int raw[2];
+
+    if (pipe(raw) != 0)
+        return false;
+    fds[0] = move_high(raw[0]);
+    fds[1] = move_high(raw[1]);
+    if (fds[0] < 0 || fds[1] < 0) {
+        if (fds[0] >= 0)
+            close(fds[0]);
+        if (fds[1] >= 0)
+            close(fds[1]);
+        return false;
+    }
+    return true;
+}
+
+/* Copies what the child reports to the explanation, until it execs. */
+static void relay_report(struct shell *sh, int fd)
+{
+    char buf[4096];
+    ssize_t n;
+
+    while ((n = read(fd, buf, sizeof buf)) != 0) {
+        if (n < 0) {
+            if (errno == EINTR)
+                continue;
+            break;
+        }
+        for (ssize_t done = 0; done < n;) {
+            ssize_t w = write(sh->explain_out, buf + done, (size_t)(n - done));
+
+            if (w < 0 && errno != EINTR)
+                return;
+            if (w > 0)
+                done += w;
+        }
+    }
+}
+
 static int run_forked(struct shell *sh, const struct pipeline *pl, char **first_argv)
 {
     size_t n = pl->ncommands;
@@ -409,6 +526,7 @@ static int run_forked(struct shell *sh, const struct pipeline *pl, char **first_
     fflush(stdout); /* or the children would get a copy of what's waiting */
     for (size_t i = 0; i < n; i++) {
         int fds[2] = { -1, -1 };
+        int report[2] = { -1, -1 };
         pid_t pid;
 
         if (i + 1 < n && pipe(fds) != 0) {
@@ -416,6 +534,14 @@ static int run_forked(struct shell *sh, const struct pipeline *pl, char **first_
             failed = true;
             break;
         }
+        if (fds[0] >= 0 && explain_on(sh)) {
+            char note[64];
+
+            snprintf(note, sizeof note, "what goes into %d comes out of %d", fds[1], fds[0]);
+            explain_event(sh, note, "pipe() = [%d, %d]", fds[0], fds[1]);
+        }
+        if (explain_on(sh) && !report_pipe(report))
+            report[0] = report[1] = -1;
         pid = fork();
         if (pid < 0) {
             fprintf(stderr, "acsh: fork: %s\n", strerror(errno));
@@ -423,19 +549,29 @@ static int run_forked(struct shell *sh, const struct pipeline *pl, char **first_
                 close(fds[0]);
                 close(fds[1]);
             }
+            if (report[0] >= 0) {
+                close(report[0]);
+                close(report[1]);
+            }
             failed = true;
             break;
         }
         if (pid == 0) {
             if (sh->interactive)
                 signals_reset_in_child();
+            if (report[1] >= 0) {
+                close(report[0]);
+                sh->explain_out = report[1];
+            }
             if (prev_read >= 0 && prev_read != STDIN_FILENO) {
+                explain_event(sh, "stdin comes from the pipe", "dup2(%d, 0)", prev_read);
                 dup2(prev_read, STDIN_FILENO);
                 close(prev_read);
             }
             if (fds[1] >= 0) {
                 close(fds[0]); /* the next command reads it, not this one */
                 if (fds[1] != STDOUT_FILENO) {
+                    explain_event(sh, "stdout goes into the pipe", "dup2(%d, 1)", fds[1]);
                     dup2(fds[1], STDOUT_FILENO);
                     close(fds[1]);
                 }
@@ -443,14 +579,32 @@ static int run_forked(struct shell *sh, const struct pipeline *pl, char **first_
             run_in_child(sh, &pl->commands[i], i == 0 ? first_argv : NULL);
         }
         pids[started++] = pid;
-        if (prev_read >= 0)
+        if (explain_on(sh)) {
+            char note[256];
+
+            snprintf(note, sizeof note, "a child for %s",
+                     command_name(&pl->commands[i], i == 0 ? first_argv : NULL));
+            explain_event(sh, note, "fork() = %ld", (long)pid);
+        }
+        if (report[0] >= 0) {
+            close(report[1]);
+            relay_report(sh, report[0]);
+            close(report[0]);
+        }
+        if (prev_read >= 0) {
+            explain_event(sh, "the shell lets go of its end", "close(%d)", prev_read);
             close(prev_read);
-        if (fds[1] >= 0)
+        }
+        if (fds[1] >= 0) {
+            explain_event(sh, "the shell lets go of its end", "close(%d)", fds[1]);
             close(fds[1]);
+        }
         prev_read = fds[0];
     }
-    if (prev_read >= 0)
+    if (prev_read >= 0) {
+        explain_event(sh, "the shell lets go of its end", "close(%d)", prev_read);
         close(prev_read);
+    }
 
     /* Wait for all of them, so none is left as a zombie. The pipeline's
      * status is the last command's, as in POSIX sh without pipefail. */
@@ -484,6 +638,7 @@ static int run_pipeline(struct shell *sh, const struct pipeline *pl)
         return 2;
     }
     av = strvec_items(&argv);
+    explain_words(sh, cmd->words, cmd->nwords, av);
     b = av[0] != NULL ? builtin_find(av[0]) : NULL;
     if (b != NULL || av[0] == NULL)
         status = run_in_shell(sh, cmd, b, av);

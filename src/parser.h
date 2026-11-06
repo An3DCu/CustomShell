@@ -40,6 +40,9 @@
  * called if. Inside a compound, a list ends at the reserved word that comes
  * next (then, elif, else, fi, do, done).
  *
+ * A line can start with the word explain: the rest of it is parsed as
+ * usual and marked to be explained (see explain.h).
+ *
  * A word of the form NAME=value that comes before the command name is an
  * assignment: in `X=1 Y=2 env`, X and Y are assignments, but in
  * `env X=1` it's an argument.
@@ -117,6 +120,7 @@ struct and_or {
 struct list {
     struct and_or *items;
     size_t nitems;
+    bool explain; /* the line started with the word explain */
 };
 
 enum parse_status {

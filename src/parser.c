@@ -409,6 +409,16 @@ enum parse_status parse_program(const char *text, struct list **out,
         return PARSE_INCOMPLETE;
 
     list = xcalloc(1, sizeof *list);
+    if (is_reserved(peek(&p), "explain")) {
+        list->explain = true;
+        p.pos++;
+        if (peek(&p)->type == TOK_END || peek(&p)->type == TOK_NEWLINE) {
+            snprintf(err, errlen, "explain: needs a command after it");
+            token_list_free(&tokens);
+            list_free(list);
+            return PARSE_SYNTAX;
+        }
+    }
     status = parse_list(&p, list, NULL);
     token_list_free(&tokens);
     if (status == PARSE_OK && list->nitems == 0)

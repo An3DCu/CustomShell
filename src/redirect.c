@@ -9,6 +9,7 @@
 #include <unistd.h>
 
 #include "expand.h"
+#include "explain.h"
 #include "xalloc.h"
 
 /* The shell's copies live from here up, away from the 0 to 9 people use. */
@@ -24,8 +25,10 @@ static void push_backup(struct redir_undo *undo, int fd, int copy)
 }
 
 /* Keeps a copy of fd before its first change. */
-static bool backup(struct redir_undo *undo, int fd)
+static bool backup(struct shell *sh, struct redir_undo *undo, int fd)
 {
+    char name[16];
+
     int copy;
 
     for (size_t i = 0; i < undo->len; i++) {
@@ -43,6 +46,8 @@ static bool backup(struct redir_undo *undo, int fd)
                 return false;
             }
             undo->items[i].copy = moved;
+            explain_event(sh, "the shell's copy moves out of the way",
+                          "fcntl(%d, F_DUPFD_CLOEXEC, 10) = %d", fd, moved);
             push_backup(undo, fd, -1);
             return true;
         }
@@ -51,6 +56,13 @@ static bool backup(struct redir_undo *undo, int fd)
     if (copy < 0 && errno != EBADF) {
         fprintf(stderr, "acsh: %d: %s\n", fd, strerror(errno));
         return false;
+    }
+    if (copy >= 0) {
+        char note[64];
+
+        snprintf(note, sizeof note, "keep %s, to put it back after",
+                 explain_fd_name(fd, name, sizeof name));
+        explain_event(sh, note, "fcntl(%d, F_DUPFD_CLOEXEC, 10) = %d", fd, copy);
     }
     push_backup(undo, fd, copy); /* copy is -1 if fd wasn't open (EBADF) */
     return true;
@@ -79,11 +91,14 @@ static int parse_fd(const char *s)
 }
 
 /* 2>&1, <&3, >&- */
-static bool apply_dup(const struct redirection *r, const char *target)
+static bool apply_dup(struct shell *sh, const struct redirection *r, const char *target)
 {
+    char a[16], b[16], note[64];
     int src;
 
     if (strcmp(target, "-") == 0) {
+        snprintf(note, sizeof note, "%s is closed", explain_fd_name(r->fd, a, sizeof a));
+        explain_event(sh, note, "close(%d)", r->fd);
         close(r->fd); /* closing an fd that isn't open is fine */
         return true;
     }
@@ -96,6 +111,9 @@ static bool apply_dup(const struct redirection *r, const char *target)
         fprintf(stderr, "acsh: %d: %s\n", src, strerror(EBADF));
         return false;
     }
+    snprintf(note, sizeof note, "%s goes where %s goes", explain_fd_name(r->fd, a, sizeof a),
+             explain_fd_name(src, b, sizeof b));
+    explain_event(sh, note, "dup2(%d, %d)", src, r->fd);
     if (src != r->fd && dup2(src, r->fd) < 0) {
         fprintf(stderr, "acsh: %d: %s\n", r->fd, strerror(errno));
         return false;
@@ -104,23 +122,42 @@ static bool apply_dup(const struct redirection *r, const char *target)
 }
 
 /* <, > and >> */
-static bool apply_file(const struct redirection *r, const char *target)
+static bool apply_file(struct shell *sh, const struct redirection *r, const char *target)
 {
+    const char *how, *flag_names;
+    char name[16], note[600];
     int flags;
     int fd;
 
     switch (r->kind) {
-    case REDIR_IN:     flags = O_RDONLY; break;
-    case REDIR_APPEND: flags = O_WRONLY | O_CREAT | O_APPEND; break;
-    default:           flags = O_WRONLY | O_CREAT | O_TRUNC; break;
+    case REDIR_IN:
+        flags = O_RDONLY;
+        flag_names = "O_RDONLY";
+        how = "comes from";
+        break;
+    case REDIR_APPEND:
+        flags = O_WRONLY | O_CREAT | O_APPEND;
+        flag_names = "O_WRONLY|O_CREAT|O_APPEND";
+        how = "is added to the end of";
+        break;
+    default:
+        flags = O_WRONLY | O_CREAT | O_TRUNC;
+        flag_names = "O_WRONLY|O_CREAT|O_TRUNC";
+        how = "goes to";
+        break;
     }
     /* 0666 before the umask, so a new file gets the usual rw-r--r--. */
     fd = open(target, flags, 0666);
     if (fd < 0) {
+        explain_event(sh, strerror(errno), "open(\"%s\", %s) failed", target, flag_names);
         fprintf(stderr, "acsh: %s: %s\n", target, strerror(errno));
         return false;
     }
+    explain_event(sh, NULL, "open(\"%s\", %s) = %d", target, flag_names, fd);
+    snprintf(note, sizeof note, "%s %s %s", explain_fd_name(r->fd, name, sizeof name), how, target);
     if (fd != r->fd) {
+        explain_event(sh, note, "dup2(%d, %d)", fd, r->fd);
+        explain_event(sh, NULL, "close(%d)", fd);
         if (dup2(fd, r->fd) < 0) {
             fprintf(stderr, "acsh: %d: %s\n", r->fd, strerror(errno));
             close(fd);
@@ -139,17 +176,19 @@ bool redir_apply(struct shell *sh, const struct command *cmd, struct redir_undo 
         char *target;
         bool ok;
 
-        if (undo != NULL && !backup(undo, r->fd))
+        if (undo != NULL && !backup(sh, undo, r->fd))
             return false;
         target = expand_one(sh, r->target, err, sizeof err);
         if (target == NULL) {
             fprintf(stderr, "acsh: %s\n", err);
             return false;
         }
+        if (strcmp(target, r->target) != 0)
+            explain_event(sh, NULL, "expand: %s  ->  %s", r->target, target);
         if (r->kind == REDIR_DUP_IN || r->kind == REDIR_DUP_OUT)
-            ok = apply_dup(r, target);
+            ok = apply_dup(sh, r, target);
         else
-            ok = apply_file(r, target);
+            ok = apply_file(sh, r, target);
         free(target);
         if (!ok)
             return false;
@@ -157,16 +196,21 @@ bool redir_apply(struct shell *sh, const struct command *cmd, struct redir_undo 
     return true;
 }
 
-void redir_restore(struct redir_undo *undo)
+void redir_restore(struct shell *sh, struct redir_undo *undo)
 {
     /* Last change first, so an fd that was changed twice ends up original. */
     for (size_t i = undo->len; i-- > 0;) {
         const struct fd_backup *b = &undo->items[i];
+        char name[16], note[64];
 
+        snprintf(note, sizeof note, "%s back as it was", explain_fd_name(b->fd, name, sizeof name));
         if (b->copy >= 0) {
+            explain_event(sh, note, "dup2(%d, %d)", b->copy, b->fd);
+            explain_event(sh, NULL, "close(%d)", b->copy);
             dup2(b->copy, b->fd);
             close(b->copy);
         } else {
+            explain_event(sh, "it wasn't open before", "close(%d)", b->fd);
             close(b->fd);
         }
     }
