@@ -1,12 +1,22 @@
 """One test for every bug the first version of acsh had.
 
 Each test runs the same input that showed the bug in the old version and
-checks for the right result. Two more live elsewhere: `cat` cutting a file
-short at a 0 byte (with my own cat, in a later change) and the prompt
-showing /home/ac2 as ~2 (tests/unit/test_prompt.c).
+checks for the right result. One more lives elsewhere: the prompt showing
+/home/ac2 as ~2 (tests/unit/test_prompt.c).
 """
 
+import subprocess
+
 import pexpect
+
+
+def test_cat_keeps_zero_bytes(tools, workdir):
+    # Old: cat read lines into C strings, so each line stopped at its first
+    # 0 byte and "ab\0cd" came out as "ab".
+    (workdir / "nul.txt").write_bytes(b"ab\0cd\nsecond line\n")
+    result = subprocess.run([str(tools / "cat"), "nul.txt"], capture_output=True, cwd=workdir,
+                            timeout=10)
+    assert result.stdout == b"ab\0cd\nsecond line\n"
 
 
 def test_no_space_before_a_redirection(run, workdir):

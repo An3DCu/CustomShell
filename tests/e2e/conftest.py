@@ -25,6 +25,15 @@ def acsh():
     return str(path)
 
 
+@pytest.fixture(scope="session")
+def tools():
+    """The folder with my own tools (cat, head, wc, ...) for this build."""
+    path = (ROOT / os.environ.get("TOOLS", "build/tools")).resolve()
+    if not path.is_dir():
+        pytest.exit(f"{path} doesn't exist. Run make first.", returncode=2)
+    return path
+
+
 @pytest.fixture
 def workdir(tmp_path):
     """An empty folder for the test, with symlinks resolved so paths compare."""
