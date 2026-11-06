@@ -20,35 +20,35 @@ static void check_folder(const char *file, int line, const char *cwd,
 
 static void test_home_becomes_tilde(void)
 {
-    CHECK_FOLDER("/home/ac", "/home/ac", "~");
-    CHECK_FOLDER("/home/ac/projects", "/home/ac", "~/projects");
-    CHECK_FOLDER("/home/ac/a/b/c", "/home/ac", "~/a/b/c");
+    CHECK_FOLDER("/home/user", "/home/user", "~");
+    CHECK_FOLDER("/home/user/projects", "/home/user", "~/projects");
+    CHECK_FOLDER("/home/user/a/b/c", "/home/user", "~/a/b/c");
 }
 
 static void test_outside_home_stays(void)
 {
-    CHECK_FOLDER("/tmp", "/home/ac", "/tmp");
-    CHECK_FOLDER("/", "/home/ac", "/");
-    CHECK_FOLDER("/home", "/home/ac", "/home");
+    CHECK_FOLDER("/tmp", "/home/user", "/tmp");
+    CHECK_FOLDER("/", "/home/user", "/");
+    CHECK_FOLDER("/home", "/home/user", "/home");
 }
 
 static void test_only_whole_folder_names_match(void)
 {
     /* The old acsh showed this as ~2. */
-    CHECK_FOLDER("/home/ac2", "/home/ac", "/home/ac2");
-    CHECK_FOLDER("/home/ac2/x", "/home/ac", "/home/ac2/x");
+    CHECK_FOLDER("/home/user2", "/home/user", "/home/user2");
+    CHECK_FOLDER("/home/user2/x", "/home/user", "/home/user2/x");
 }
 
 static void test_home_with_trailing_slash(void)
 {
-    CHECK_FOLDER("/home/ac", "/home/ac/", "~");
-    CHECK_FOLDER("/home/ac/x", "/home/ac//", "~/x");
+    CHECK_FOLDER("/home/user", "/home/user/", "~");
+    CHECK_FOLDER("/home/user/x", "/home/user//", "~/x");
 }
 
 static void test_missing_or_odd_home(void)
 {
-    CHECK_FOLDER("/home/ac", NULL, "/home/ac");
-    CHECK_FOLDER("/home/ac", "", "/home/ac");
+    CHECK_FOLDER("/home/user", NULL, "/home/user");
+    CHECK_FOLDER("/home/user", "", "/home/user");
     CHECK_FOLDER("/", "/", "~");
     CHECK_FOLDER("/usr", "/", "/usr");
 }

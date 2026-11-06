@@ -2,7 +2,7 @@
 
 Each test runs the same input that showed the bug in the old version and
 checks for the right result. One more lives elsewhere: the prompt showing
-/home/ac2 as ~2 (tests/unit/test_prompt.c).
+/home/user2 as ~2 (tests/unit/test_prompt.c).
 """
 
 import subprocess

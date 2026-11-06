@@ -24,6 +24,14 @@ def test_long_pipeline(run):
     assert result.returncode == 0
 
 
+def test_shell_holds_no_fds_after_a_long_pipeline(run):
+    # Every pipe end the shell opened for 200 commands must be closed again.
+    # The child sh lists the fds of its parent, acsh itself.
+    line = "echo hi" + " | cat" * 200 + "\n"
+    result = run(stdin=line + "sh -c 'ls /proc/$PPID/fd'\n", timeout=30)
+    assert result.stdout.split() == ["hi", "0", "1", "2"]
+
+
 def test_writer_stops_when_the_reader_is_done(run):
     # yes never stops on its own. It only ends with SIGPIPE once head exits
     # and nobody holds the pipe's read end. A forgotten end hangs this test.

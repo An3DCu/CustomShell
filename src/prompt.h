@@ -6,7 +6,7 @@
 void prompt_print(void);
 
 /* The folder as the prompt shows it: home becomes ~. Only a whole folder
- * name matches, so with home /home/ac, /home/ac2 stays /home/ac2. Returns a
+ * name matches, so with home /home/user, /home/user2 stays /home/user2. Returns a
  * new string. home may be NULL or empty. */
 char *prompt_folder(const char *cwd, const char *home);
 

@@ -15,7 +15,7 @@ char *prompt_folder(const char *cwd, const char *home)
     if (home == NULL || home[0] == '\0')
         return xstrdup(cwd);
     n = strlen(home);
-    while (n > 1 && home[n - 1] == '/') /* HOME=/home/ac/ means /home/ac */
+    while (n > 1 && home[n - 1] == '/') /* HOME=/home/user/ means /home/user */
         n--;
     if (strncmp(cwd, home, n) != 0)
         return xstrdup(cwd);
