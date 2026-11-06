@@ -16,6 +16,10 @@ struct builtin {
     builtin_fn *run;
     const char *usage;   /* for help: "cd [dir | -]" */
     const char *summary; /* for help: one line on what it does */
+    /* POSIX "special" built-ins (exit, export, unset): an assignment in
+     * front of one stays, so `X=2 export X` exports X=2. For the others,
+     * `X=2 cd` only changes X while cd runs. */
+    bool special;
 };
 
 /* The built-in with this name, or NULL. */

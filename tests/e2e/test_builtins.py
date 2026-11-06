@@ -154,7 +154,7 @@ def test_exit_with_too_many_arguments_stays(run):
 def test_help_lists_every_builtin(run):
     result = run(stdin="help\n")
     assert result.returncode == 0
-    for name in ["cd", "echo", "exit", "help", "pwd"]:
+    for name in ["cd", "echo", "exit", "export", "help", "pwd", "unset"]:
         assert f"\n  {name}" in result.stdout
 
 

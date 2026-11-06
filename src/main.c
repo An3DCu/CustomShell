@@ -18,8 +18,11 @@
 #include "prompt.h"
 #include "shell.h"
 #include "signals.h"
+#include "vars.h"
 #include "version.h"
 #include "xalloc.h"
+
+extern char **environ; /* POSIX: declared by the program itself */
 
 static void usage(FILE *out)
 {
@@ -52,7 +55,7 @@ static char *own_path(void)
 
 /* --own-tools: put the tools folder next to acsh at the front of PATH, so
  * `cat` finds my cat first. Children see the same PATH. */
-static bool use_own_tools(void)
+static bool use_own_tools(struct shell *sh)
 {
     char *exe = own_path();
     char *slash, *tools, *path;
@@ -73,13 +76,14 @@ static bool use_own_tools(void)
         free(tools);
         return false;
     }
-    old = getenv("PATH");
+    old = vars_get(&sh->vars, "PATH");
     path = xmalloc(strlen(tools) + (old ? strlen(old) : 0) + 2);
     if (old != NULL && old[0] != '\0')
         sprintf(path, "%s:%s", tools, old);
     else
         strcpy(path, tools);
-    setenv("PATH", path, 1);
+    vars_set(&sh->vars, "PATH", path);
+    vars_export(&sh->vars, "PATH");
     free(path);
     free(tools);
     return true;
@@ -117,7 +121,7 @@ static int shell_loop(struct shell *sh)
 
     for (;;) {
         if (sh->interactive)
-            prompt_print();
+            prompt_print(vars_get(&sh->vars, "HOME"));
         if (input_read_line(STDIN_FILENO, &line, &cap, sh->interactive) < 0) {
             if (errno == EINTR) {
                 /* Ctrl+C at the prompt: drop the line, start a new one.
@@ -145,6 +149,7 @@ static int shell_loop(struct shell *sh)
 int main(int argc, char **argv)
 {
     struct shell sh = { 0 };
+    int status;
 
     if (argc == 2 && strcmp(argv[1], "--version") == 0) {
         printf("acsh %s\n", ACSH_VERSION);
@@ -154,13 +159,20 @@ int main(int argc, char **argv)
         usage(stdout);
         return 0;
     }
+    /* From here on the shell keeps its variables in its own table. */
+    vars_init(&sh.vars, environ);
+    sh.pid = getpid();
+    sh.name = argv[0];
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--own-tools") == 0) {
-            if (!use_own_tools())
+            if (!use_own_tools(&sh)) {
+                vars_free(&sh.vars);
                 return 2;
+            }
         } else {
             fprintf(stderr, "acsh: unknown option '%s'\n", argv[i]);
             usage(stderr);
+            vars_free(&sh.vars);
             return 2;
         }
     }
@@ -169,5 +181,7 @@ int main(int argc, char **argv)
     sh.interactive = isatty(STDIN_FILENO) && isatty(STDERR_FILENO);
     if (sh.interactive)
         signals_init_interactive();
-    return shell_loop(&sh);
+    status = shell_loop(&sh);
+    vars_free(&sh.vars);
+    return status;
 }

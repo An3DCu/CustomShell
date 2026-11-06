@@ -5,6 +5,7 @@
 #include <stddef.h>
 
 #include "parser.h"
+#include "shell.h"
 
 /*
  * Redirections, applied in the order they were written: in `cmd 2>&1 >f`,
@@ -28,10 +29,10 @@ struct redir_undo {
     size_t cap;
 };
 
-/* Applies cmd's redirections. Pass undo in the shell, NULL in a child.
- * On failure, prints why ("acsh: out.txt: Permission denied") and returns
+/* Applies cmd's redirections, expanding each target first ($F, ~/log; no
+ * splitting). Pass undo in the shell, NULL in a child. On failure, prints why ("acsh: out.txt: Permission denied") and returns
  * false; the changes made before it stay until redir_restore. */
-bool redir_apply(const struct command *cmd, struct redir_undo *undo);
+bool redir_apply(struct shell *sh, const struct command *cmd, struct redir_undo *undo);
 
 /* Puts every saved fd back and empties undo. */
 void redir_restore(struct redir_undo *undo);

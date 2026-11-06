@@ -5,6 +5,7 @@
 #include <stdlib.h>
 
 #include "lexer.h"
+#include "vars.h"
 #include "xalloc.h"
 
 /* Reads the tokens left to right; *pos is the next one. TOK_END is always
@@ -40,12 +41,22 @@ static enum parse_status unexpected(struct parser *p, const struct token *tok)
     return PARSE_SYNTAX;
 }
 
-static void add_word(struct command *cmd, const char *text)
+/* Adds text to a NULL-terminated list of n words. */
+static void push_word(char ***list, size_t *n, const char *text)
 {
     /* +2: room for the new word and the NULL after it. */
-    cmd->words = xreallocarray(cmd->words, cmd->nwords + 2, sizeof *cmd->words);
-    cmd->words[cmd->nwords++] = xstrdup(text);
-    cmd->words[cmd->nwords] = NULL;
+    *list = xreallocarray(*list, *n + 2, sizeof **list);
+    (*list)[(*n)++] = xstrdup(text);
+    (*list)[*n] = NULL;
+}
+
+/* NAME=value with a plain, unquoted name: X=1 and X="a b", but not "X"=1
+ * or 1X=1. Only the name has to be plain; the value can be anything. */
+static bool is_assignment(const char *word)
+{
+    size_t n = var_name_len(word);
+
+    return n > 0 && word[n] == '=';
 }
 
 static void add_redirection(struct command *cmd, const struct token *op,
@@ -66,14 +77,19 @@ static void add_redirection(struct command *cmd, const struct token *op,
     cmd->redirs[cmd->nredirs++] = r;
 }
 
-/* command = ( word | redirection ) { word | redirection } */
+/* command = ( word | redirection ) { word | redirection }
+ * Words like NAME=value before the command name are assignments; after it,
+ * they're ordinary arguments (`echo X=1` prints X=1). */
 static enum parse_status parse_command(struct parser *p, struct command *cmd)
 {
     for (;;) {
         const struct token *tok = peek(p);
 
         if (tok->type == TOK_WORD) {
-            add_word(cmd, tok->text);
+            if (cmd->nwords == 0 && is_assignment(tok->text))
+                push_word(&cmd->assigns, &cmd->nassigns, tok->text);
+            else
+                push_word(&cmd->words, &cmd->nwords, tok->text);
             p->pos++;
         } else if (token_is_redirection(tok->type)) {
             const struct token *target = &p->tokens->items[p->pos + 1];
@@ -161,6 +177,9 @@ void pipeline_free(struct pipeline *pipeline)
         for (size_t w = 0; w < cmd->nwords; w++)
             free(cmd->words[w]);
         free(cmd->words);
+        for (size_t a = 0; a < cmd->nassigns; a++)
+            free(cmd->assigns[a]);
+        free(cmd->assigns);
         for (size_t r = 0; r < cmd->nredirs; r++)
             free(cmd->redirs[r].target);
         free(cmd->redirs);

@@ -8,9 +8,17 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "vars.h"
 #include "xalloc.h"
 
 /* ---- cd ----------------------------------------------------------------- */
+
+/* PWD and OLDPWD go to children too, as in bash. */
+static void set_exported(struct shell *sh, const char *name, const char *value)
+{
+    vars_set(&sh->vars, name, value);
+    vars_export(&sh->vars, name);
+}
 
 static int builtin_cd(struct shell *sh, int argc, char **argv)
 {
@@ -18,19 +26,18 @@ static int builtin_cd(struct shell *sh, int argc, char **argv)
     bool print = false;
     char *before, *after;
 
-    (void)sh;
     if (argc > 2) {
         fputs("acsh: cd: too many arguments\n", stderr);
         return 1;
     }
     if (argc == 1) {
-        dir = getenv("HOME");
+        dir = vars_get(&sh->vars, "HOME");
         if (dir == NULL || dir[0] == '\0') {
             fputs("acsh: cd: HOME not set\n", stderr);
             return 1;
         }
     } else if (strcmp(argv[1], "-") == 0) {
-        dir = getenv("OLDPWD");
+        dir = vars_get(&sh->vars, "OLDPWD");
         if (dir == NULL || dir[0] == '\0') {
             fputs("acsh: cd: OLDPWD not set\n", stderr);
             return 1;
@@ -46,13 +53,13 @@ static int builtin_cd(struct shell *sh, int argc, char **argv)
         free(before);
         return 1;
     }
-    /* dir may point into the environment, which setenv can change, so it
+    /* dir may point into the variable table, which vars_set changes, so it
      * isn't used after this. */
     after = xgetcwd();
     if (before != NULL)
-        setenv("OLDPWD", before, 1);
+        set_exported(sh, "OLDPWD", before);
     if (after != NULL) {
-        setenv("PWD", after, 1);
+        set_exported(sh, "PWD", after);
         if (print)
             printf("%s\n", after);
     }
@@ -225,28 +232,122 @@ static int builtin_exit(struct shell *sh, int argc, char **argv)
     return status;
 }
 
+/* ---- export and unset --------------------------------------------------- */
+
+/* Prints s in single quotes so the shell can read it back. A ' inside
+ * closes the quotes, adds "'" and opens them again, as dash prints it:
+ * it's -> 'it'"'"'s'. */
+static void print_quoted(const char *s)
+{
+    putchar('\'');
+    for (; *s != '\0'; s++) {
+        if (*s == '\'')
+            fputs("'\"'\"'", stdout);
+        else
+            putchar(*s);
+    }
+    putchar('\'');
+}
+
+/* export -p, in the form dash uses: export NAME='value', sorted by name. */
+static void print_exports(const struct shell *sh)
+{
+    size_t n;
+    const struct var **list = vars_sorted(&sh->vars, &n);
+
+    for (size_t i = 0; i < n; i++) {
+        if (!list[i]->exported || !var_name_valid(list[i]->name))
+            continue;
+        printf("export %s", list[i]->name);
+        if (list[i]->value != NULL) {
+            putchar('=');
+            print_quoted(list[i]->value);
+        }
+        putchar('\n');
+    }
+    free(list);
+}
+
+static int builtin_export(struct shell *sh, int argc, char **argv)
+{
+    int status = 0;
+    int i = 1;
+
+    if (i < argc && strcmp(argv[i], "-p") == 0)
+        i++;
+    if (i == argc) {
+        print_exports(sh);
+        return 0;
+    }
+    for (; i < argc; i++) {
+        size_t n = var_name_len(argv[i]);
+
+        if (n == 0 || (argv[i][n] != '\0' && argv[i][n] != '=')) {
+            fprintf(stderr, "acsh: export: %s: bad variable name\n", argv[i]);
+            status = 1;
+            continue;
+        }
+        if (argv[i][n] == '=') {
+            char *name = xstrndup(argv[i], n);
+
+            vars_set(&sh->vars, name, argv[i] + n + 1);
+            vars_export(&sh->vars, name);
+            free(name);
+        } else {
+            vars_export(&sh->vars, argv[i]);
+        }
+    }
+    return status;
+}
+
+static int builtin_unset(struct shell *sh, int argc, char **argv)
+{
+    int status = 0;
+    int i = 1;
+
+    if (i < argc && strcmp(argv[i], "-v") == 0)
+        i++;
+    if (i < argc && argv[i][0] == '-' && argv[i][1] != '\0') {
+        fprintf(stderr, "acsh: unset: %s: invalid option\n", argv[i]);
+        return 2;
+    }
+    for (; i < argc; i++) {
+        if (!var_name_valid(argv[i])) {
+            fprintf(stderr, "acsh: unset: %s: bad variable name\n", argv[i]);
+            status = 1;
+            continue;
+        }
+        vars_unset(&sh->vars, argv[i]);
+    }
+    return status;
+}
+
 /* ---- help --------------------------------------------------------------- */
 
 static int builtin_help(struct shell *sh, int argc, char **argv);
 
 static const struct builtin builtins[] = {
-    { "cd",   builtin_cd,   "cd [dir | -]",
-      "Go to dir. With no dir, go home; with -, go back to the last folder." },
-    { "echo", builtin_echo, "echo [-neE] [word ...]",
-      "Print the words. -n: no newline at the end. -e: read \\n, \\t and other escapes." },
-    { "exit", builtin_exit, "exit [n]",
-      "Leave acsh with status n, or with the last command's status." },
-    { "help", builtin_help, "help [name]",
-      "List the built-ins, or show one." },
-    { "pwd",  builtin_pwd,  "pwd",
-      "Print the current folder." },
+    { "cd",     builtin_cd,     "cd [dir | -]",
+      "Go to dir. With no dir, go home; with -, go back to the last folder.", false },
+    { "echo",   builtin_echo,   "echo [-neE] [word ...]",
+      "Print the words. -n: no newline at the end. -e: read \\n, \\t and other escapes.", false },
+    { "exit",   builtin_exit,   "exit [n]",
+      "Leave acsh with status n, or with the last command's status.", true },
+    { "export", builtin_export, "export [name[=value] ...]",
+      "Pass variables on to commands. With no names, list the ones passed on.", true },
+    { "help",   builtin_help,   "help [name]",
+      "List the built-ins, or show one.", false },
+    { "pwd",    builtin_pwd,    "pwd",
+      "Print the current folder.", false },
+    { "unset",  builtin_unset,  "unset name ...",
+      "Remove the variables.", true },
 };
 
 #define NBUILTINS (sizeof builtins / sizeof builtins[0])
 
 static void print_help_line(const struct builtin *b)
 {
-    printf("  %-24s %s\n", b->usage, b->summary);
+    printf("  %-26s %s\n", b->usage, b->summary);
 }
 
 static int builtin_help(struct shell *sh, int argc, char **argv)

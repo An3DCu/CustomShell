@@ -8,9 +8,9 @@
  * The lexer cuts a line into words and operators.
  *
  * A word keeps its quotes and backslashes exactly as typed: `"a b"` stays
- * `"a b"`. Later steps need them (in "$HOME" the $ expands, in '$HOME' it
- * doesn't), and word_unquote() removes them at the end. Both live in lexer.c,
- * so the quoting rules are written down in one place.
+ * `"a b"`. Expansion needs them (in "$HOME" the $ expands, in '$HOME' it
+ * doesn't) and removes them at the end; see expand.h. The lexer only has to
+ * know where a quote ends, so `echo "a | b"` is one word and no pipe.
  */
 
 enum token_type {
@@ -59,17 +59,5 @@ bool token_is_redirection(enum token_type type);
 
 /* How the token is written: "|", ">>", the word itself, or "end of line". */
 const char *token_spelling(const struct token *tok);
-
-/*
- * Removes quotes and backslashes the way a POSIX shell does:
- *   'single'   everything inside is literal
- *   "double"   a backslash only escapes $ ` " \ and newline; any other
- *              backslash stays
- *   \x         outside quotes, x is literal
- *   \newline   removed entirely (the line continues)
- * Returns a new string. The word should come from lex(), so its quotes are
- * closed; an unclosed one is handled without crashing, but not meaningfully.
- */
-char *word_unquote(const char *word);
 
 #endif
