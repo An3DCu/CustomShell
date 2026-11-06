@@ -46,6 +46,7 @@ LIB_OBJ  := $(filter-out $(BUILD)/obj/main.o,$(OBJ))
 
 TOOL_SRC := $(wildcard tools/*.c)
 TOOLS    := $(TOOL_SRC:tools/%.c=$(BUILD)/tools/%)
+TOOL_LIB := $(BUILD)/toollib/tool.o
 
 UNIT_SRC := $(wildcard tests/unit/test_*.c)
 UNIT     := $(UNIT_SRC:tests/unit/%.c=$(BUILD)/unit/%)
@@ -71,10 +72,15 @@ $(BUILD)/obj/%.o: src/%.c
 	@mkdir -p $(@D)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
 
-# Each tool is one source file and its own program.
-$(BUILD)/tools/%: tools/%.c
+# Each tool is one source file and its own program, linked with the few
+# helpers they share (tools/lib/).
+$(BUILD)/toollib/%.o: tools/lib/%.c
 	@mkdir -p $(@D)
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $@ $<
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
+
+$(BUILD)/tools/%: tools/%.c $(TOOL_LIB)
+	@mkdir -p $(@D)
+	$(CC) $(CPPFLAGS) -Itools/lib $(CFLAGS) $(LDFLAGS) -o $@ $< $(TOOL_LIB)
 
 # A unit test links the harness and every shell module except main.
 $(BUILD)/unit/%.o: tests/unit/%.c
@@ -106,4 +112,4 @@ test-debug:
 clean:
 	rm -rf build
 
--include $(OBJ:.o=.d) $(UNIT:%=%.d) $(CHECK:.o=.d)
+-include $(OBJ:.o=.d) $(UNIT:%=%.d) $(CHECK:.o=.d) $(TOOLS:%=%.d) $(TOOL_LIB:.o=.d)
