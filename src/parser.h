@@ -82,6 +82,7 @@ struct if_branch {
  * "X=1" sets X. Which fields are used depends on kind. */
 struct command {
     enum command_kind kind;
+    int line;             /* the line it starts on, counting from 0 in the parsed text */
     char **assigns;       /* simple: NAME=value before the name, as typed, NULL-terminated */
     size_t nassigns;
     char **words;         /* simple: the words; for: the words after in. As typed, NULL-terminated */

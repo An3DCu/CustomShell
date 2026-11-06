@@ -160,8 +160,20 @@ def test_help_lists_every_builtin(run):
 
 def test_help_for_one_builtin(run):
     result = run(stdin="help cd\n")
-    assert result.stdout.startswith("  cd [dir | -]")
-    assert result.stdout.count("\n") == 1
+    assert result.stdout.startswith("cd [dir | -]\n    cd dir    go to dir\n")
+    assert result.returncode == 0
+
+
+@pytest.mark.parametrize(
+    "name",
+    [".", ":", "break", "cd", "continue", "echo", "exit", "explain", "export", "false",
+     "help", "pwd", "read", "set", "shift", "source", "true", "unset"],
+)
+def test_every_builtin_has_a_help_page(run, name):
+    result = run(stdin=f"help {name}\n")
+    lines = result.stdout.splitlines()
+    assert lines[0].split()[0] == name
+    assert len(lines) >= 2 and all(line.startswith("    ") for line in lines[1:])
 
 
 def test_help_for_something_unknown(run):

@@ -36,6 +36,7 @@ struct token {
     char *text;    /* TOK_WORD: the word as typed. NULL for everything else. */
     int io_number; /* redirections: the fd written right before, like 2 in 2>, or -1 */
     size_t pos;    /* where the token starts in the line */
+    int line;      /* which line of the text it's on, counting from 0 */
 };
 
 struct token_list {

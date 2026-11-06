@@ -8,6 +8,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "error.h"
 #include "expand.h"
 #include "explain.h"
 #include "xalloc.h"
@@ -42,7 +43,7 @@ static bool backup(struct shell *sh, struct redir_undo *undo, int fd)
             int moved = fcntl(fd, F_DUPFD_CLOEXEC, BACKUP_MIN_FD);
 
             if (moved < 0) {
-                fprintf(stderr, "acsh: %d: %s\n", fd, strerror(errno));
+                shell_error(sh, "%d: %s", fd, strerror(errno));
                 return false;
             }
             undo->items[i].copy = moved;
@@ -54,7 +55,7 @@ static bool backup(struct shell *sh, struct redir_undo *undo, int fd)
     }
     copy = fcntl(fd, F_DUPFD_CLOEXEC, BACKUP_MIN_FD);
     if (copy < 0 && errno != EBADF) {
-        fprintf(stderr, "acsh: %d: %s\n", fd, strerror(errno));
+        shell_error(sh, "%d: %s", fd, strerror(errno));
         return false;
     }
     if (copy >= 0) {
@@ -104,18 +105,18 @@ static bool apply_dup(struct shell *sh, const struct redirection *r, const char 
     }
     src = parse_fd(target);
     if (src < 0) {
-        fprintf(stderr, "acsh: %s: bad file descriptor\n", target);
+        shell_error(sh, "%s: bad file descriptor", target);
         return false;
     }
     if (!is_open(src)) {
-        fprintf(stderr, "acsh: %d: %s\n", src, strerror(EBADF));
+        shell_error(sh, "%d: %s", src, strerror(EBADF));
         return false;
     }
     snprintf(note, sizeof note, "%s goes where %s goes", explain_fd_name(r->fd, a, sizeof a),
              explain_fd_name(src, b, sizeof b));
     explain_event(sh, note, "dup2(%d, %d)", src, r->fd);
     if (src != r->fd && dup2(src, r->fd) < 0) {
-        fprintf(stderr, "acsh: %d: %s\n", r->fd, strerror(errno));
+        shell_error(sh, "%d: %s", r->fd, strerror(errno));
         return false;
     }
     return true;
@@ -150,7 +151,7 @@ static bool apply_file(struct shell *sh, const struct redirection *r, const char
     fd = open(target, flags, 0666);
     if (fd < 0) {
         explain_event(sh, strerror(errno), "open(\"%s\", %s) failed", target, flag_names);
-        fprintf(stderr, "acsh: %s: %s\n", target, strerror(errno));
+        shell_error(sh, "%s: %s", target, strerror(errno));
         return false;
     }
     explain_event(sh, NULL, "open(\"%s\", %s) = %d", target, flag_names, fd);
@@ -159,7 +160,7 @@ static bool apply_file(struct shell *sh, const struct redirection *r, const char
         explain_event(sh, note, "dup2(%d, %d)", fd, r->fd);
         explain_event(sh, NULL, "close(%d)", fd);
         if (dup2(fd, r->fd) < 0) {
-            fprintf(stderr, "acsh: %d: %s\n", r->fd, strerror(errno));
+            shell_error(sh, "%d: %s", r->fd, strerror(errno));
             close(fd);
             return false;
         }
@@ -180,7 +181,7 @@ bool redir_apply(struct shell *sh, const struct command *cmd, struct redir_undo 
             return false;
         target = expand_one(sh, r->target, err, sizeof err);
         if (target == NULL) {
-            fprintf(stderr, "acsh: %s\n", err);
+            shell_error(sh, "%s", err);
             return false;
         }
         if (strcmp(target, r->target) != 0)

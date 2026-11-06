@@ -317,7 +317,7 @@ static enum parse_status parse_pipeline(struct parser *p, struct pipeline *pl)
             return unexpected(p, tok);
         pl->commands = xreallocarray(pl->commands, pl->ncommands + 1,
                                      sizeof *pl->commands);
-        pl->commands[pl->ncommands] = (struct command){ 0 };
+        pl->commands[pl->ncommands] = (struct command){ .line = tok->line };
         if (starts_compound(tok))
             status = parse_compound(p, &pl->commands[pl->ncommands++]);
         else

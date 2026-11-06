@@ -9,6 +9,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "error.h"
 #include "explain.h"
 #include "input.h"
 #include "script.h"
@@ -32,19 +33,19 @@ static int builtin_cd(struct shell *sh, int argc, char **argv)
     char *before, *after;
 
     if (argc > 2) {
-        fputs("acsh: cd: too many arguments\n", stderr);
+        shell_error(sh, "cd: too many arguments");
         return 1;
     }
     if (argc == 1) {
         dir = vars_get(&sh->vars, "HOME");
         if (dir == NULL || dir[0] == '\0') {
-            fputs("acsh: cd: HOME not set\n", stderr);
+            shell_error(sh, "cd: HOME not set");
             return 1;
         }
     } else if (strcmp(argv[1], "-") == 0) {
         dir = vars_get(&sh->vars, "OLDPWD");
         if (dir == NULL || dir[0] == '\0') {
-            fputs("acsh: cd: OLDPWD not set\n", stderr);
+            shell_error(sh, "cd: OLDPWD not set");
             return 1;
         }
         print = true; /* like bash: say where "-" went */
@@ -54,7 +55,7 @@ static int builtin_cd(struct shell *sh, int argc, char **argv)
 
     before = xgetcwd(); /* NULL if the current folder was deleted */
     if (chdir(dir) != 0) {
-        fprintf(stderr, "acsh: cd: %s: %s\n", dir, strerror(errno));
+        shell_error(sh, "cd: %s: %s", dir, strerror(errno));
         free(before);
         return 1;
     }
@@ -83,7 +84,7 @@ static int builtin_pwd(struct shell *sh, int argc, char **argv)
     (void)argc;
     (void)argv;
     if (cwd == NULL) {
-        fprintf(stderr, "acsh: pwd: %s\n", strerror(errno));
+        shell_error(sh, "pwd: %s", strerror(errno));
         return 1;
     }
     printf("%s\n", cwd);
@@ -221,7 +222,7 @@ static int builtin_exit(struct shell *sh, int argc, char **argv)
     long n;
 
     if (argc > 2) {
-        fputs("acsh: exit: too many arguments\n", stderr);
+        shell_error(sh, "exit: too many arguments");
         return 1; /* like bash: an error, but the shell stays */
     }
     if (argc == 2) {
@@ -229,7 +230,7 @@ static int builtin_exit(struct shell *sh, int argc, char **argv)
             /* An exit status is one byte: 256 is 0, -1 is 255. */
             status = (int)((unsigned long)n & 0xff);
         } else {
-            fprintf(stderr, "acsh: exit: %s: numeric argument required\n", argv[1]);
+            shell_error(sh, "exit: %s: numeric argument required", argv[1]);
             status = 2;
         }
     }
@@ -288,7 +289,7 @@ static int builtin_export(struct shell *sh, int argc, char **argv)
         size_t n = var_name_len(argv[i]);
 
         if (n == 0 || (argv[i][n] != '\0' && argv[i][n] != '=')) {
-            fprintf(stderr, "acsh: export: %s: bad variable name\n", argv[i]);
+            shell_error(sh, "export: %s: bad variable name", argv[i]);
             status = 1;
             continue;
         }
@@ -313,12 +314,12 @@ static int builtin_unset(struct shell *sh, int argc, char **argv)
     if (i < argc && strcmp(argv[i], "-v") == 0)
         i++;
     if (i < argc && argv[i][0] == '-' && argv[i][1] != '\0') {
-        fprintf(stderr, "acsh: unset: %s: invalid option\n", argv[i]);
+        shell_error(sh, "unset: %s: invalid option", argv[i]);
         return 2;
     }
     for (; i < argc; i++) {
         if (!var_name_valid(argv[i])) {
-            fprintf(stderr, "acsh: unset: %s: bad variable name\n", argv[i]);
+            shell_error(sh, "unset: %s: bad variable name", argv[i]);
             status = 1;
             continue;
         }
@@ -334,15 +335,15 @@ static int builtin_shift(struct shell *sh, int argc, char **argv)
     long n = 1;
 
     if (argc > 2) {
-        fputs("acsh: shift: too many arguments\n", stderr);
+        shell_error(sh, "shift: too many arguments");
         return 1;
     }
     if (argc == 2 && !parse_number(argv[1], &n)) {
-        fprintf(stderr, "acsh: shift: %s: numeric argument required\n", argv[1]);
+        shell_error(sh, "shift: %s: numeric argument required", argv[1]);
         return 1;
     }
     if (n < 0 || (unsigned long)n > sh->params.len) {
-        fputs("acsh: shift: can't shift that many\n", stderr);
+        shell_error(sh, "shift: can't shift that many");
         return 1;
     }
     strvec_remove_front(&sh->params, (size_t)n);
@@ -378,11 +379,11 @@ static int loop_jump(struct shell *sh, int argc, char **argv, int *count)
     long n = 1;
 
     if (argc > 2) {
-        fprintf(stderr, "acsh: %s: too many arguments\n", argv[0]);
+        shell_error(sh, "%s: too many arguments", argv[0]);
         return 1;
     }
     if (argc == 2 && (!parse_number(argv[1], &n) || n < 1)) {
-        fprintf(stderr, "acsh: %s: %s: loop count out of range\n", argv[0], argv[1]);
+        shell_error(sh, "%s: %s: loop count out of range", argv[0], argv[1]);
         return 1;
     }
     if (sh->loop_depth == 0)
@@ -564,14 +565,14 @@ static int builtin_read(struct shell *sh, int argc, char **argv)
             break;
         }
         if (strcmp(argv[i], "-r") != 0) {
-            fprintf(stderr, "acsh: read: %s: invalid option\n", argv[i]);
+            shell_error(sh, "read: %s: invalid option", argv[i]);
             return 2;
         }
         raw = true;
     }
     for (int k = i; k < argc; k++) {
         if (!var_name_valid(argv[k])) {
-            fprintf(stderr, "acsh: read: %s: bad variable name\n", argv[k]);
+            shell_error(sh, "read: %s: bad variable name", argv[k]);
             return 2;
         }
     }
@@ -642,26 +643,26 @@ static char *find_sourced(const struct shell *sh, const char *name)
 static int builtin_source(struct shell *sh, int argc, char **argv)
 {
     struct strvec saved = sh->params;
-    struct reader r = { 0 };
+    struct reader r = { .name = argv[1] };
     char *path;
     int status;
 
     if (argc < 2) {
-        fprintf(stderr, "acsh: %s: filename argument required\n", argv[0]);
+        shell_error(sh, "%s: filename argument required", argv[0]);
         return 2;
     }
     if (sh->source_depth >= MAX_SOURCE_DEPTH) {
-        fprintf(stderr, "acsh: %s: %s: sourced too deeply (a loop?)\n", argv[0], argv[1]);
+        shell_error(sh, "%s: %s: sourced too deeply (a loop?)", argv[0], argv[1]);
         return 1;
     }
     path = find_sourced(sh, argv[1]);
     if (path == NULL) {
-        fprintf(stderr, "acsh: %s: %s: not found\n", argv[0], argv[1]);
+        shell_error(sh, "%s: %s: not found", argv[0], argv[1]);
         return 1;
     }
     r.fd = script_open(path);
     if (r.fd < 0) {
-        fprintf(stderr, "acsh: %s: %s: %s\n", argv[0], path, strerror(errno));
+        shell_error(sh, "%s: %s: %s", argv[0], path, strerror(errno));
         free(path);
         return 1;
     }
@@ -710,7 +711,7 @@ static int set_option(struct shell *sh, bool on, const char *name)
         return 0;
     }
     if (strcmp(name, "explain") != 0) {
-        fprintf(stderr, "acsh: set: %s: no such option (acsh has explain)\n", name);
+        shell_error(sh, "set: %s: no such option (acsh has explain)", name);
         return 2;
     }
     if (on && !explain_start(sh))
@@ -735,7 +736,7 @@ static int builtin_set(struct shell *sh, int argc, char **argv)
     }
     if (strcmp(argv[1], "-o") == 0 || strcmp(argv[1], "+o") == 0) {
         if (argc > 3) {
-            fputs("acsh: set: too many arguments\n", stderr);
+            shell_error(sh, "set: too many arguments");
             return 2;
         }
         return set_option(sh, argv[1][0] == '-', argc == 3 ? argv[2] : NULL);
@@ -743,7 +744,7 @@ static int builtin_set(struct shell *sh, int argc, char **argv)
     if (strcmp(argv[1], "--") == 0) {
         i = 2;
     } else if ((argv[1][0] == '-' || argv[1][0] == '+') && argv[1][1] != '\0') {
-        fprintf(stderr, "acsh: set: %s isn't supported yet (only -o explain)\n", argv[1]);
+        shell_error(sh, "set: %s isn't supported yet (only -o explain)", argv[1]);
         return 2;
     }
     strvec_free(&sh->params);
@@ -759,7 +760,7 @@ static int builtin_explain(struct shell *sh, int argc, char **argv)
     (void)sh;
     (void)argc;
     (void)argv;
-    fputs("acsh: explain: put it at the start of a line, before the command\n", stderr);
+    shell_error(sh, "explain: put it at the start of a line, before the command");
     return 2;
 }
 
@@ -808,9 +809,96 @@ static const struct builtin builtins[] = {
 
 #define NBUILTINS (sizeof builtins / sizeof builtins[0])
 
+/* help name: more than the one line, for each built-in. */
+static const struct {
+    const char *name;
+    const char *text;
+} details[] = {
+    { ".",
+      "Reads file and runs its commands in this shell, so its variables and cd\n"
+      "stay. Without a /, file is looked for in PATH, then in this folder. The\n"
+      "status is the last command's, and an exit in the file leaves the shell.\n" },
+    { ":",
+      "Ignores its arguments and gives status 0. Handy in `while :` and as a\n"
+      "placeholder.\n" },
+    { "break",
+      "Ends the loop it's in. break 2 also ends the loop around that one.\n"
+      "Outside a loop it does nothing.\n" },
+    { "cd",
+      "cd dir    go to dir\n"
+      "cd        go to $HOME\n"
+      "cd -      go back to $OLDPWD, and print where that is\n"
+      "Sets PWD and OLDPWD for the commands after it.\n" },
+    { "continue",
+      "Skips the rest of this round of the loop and starts the next one.\n"
+      "continue 2 does that for the loop around this one.\n" },
+    { "echo",
+      "Prints the words with a space between them and a newline at the end, like\n"
+      "bash. -n leaves out the newline. -e reads escapes: \\n \\t \\\\ \\0nnn \\xHH\n"
+      "and the others, and \\c stops printing. -E turns them off again.\n" },
+    { "exit",
+      "Leaves acsh with status n (0 to 255), or with the last command's status.\n"
+      "With an argument that isn't a number it leaves with 2.\n" },
+    { "explain",
+      "Put it in front of a line: acsh shows the line as a tree, then every\n"
+      "system call it makes for it with a note on what it does, then the status.\n"
+      "`set -o explain` does that for every line.\n" },
+    { "export",
+      "export X        pass X on to the commands started from now on\n"
+      "export X=value  set it and pass it on\n"
+      "export          list the ones passed on, in a form the shell can read back\n" },
+    { "false",
+      "Gives status 1 and does nothing else.\n" },
+    { "help",
+      "help lists every built-in in one line; help name shows more about one.\n" },
+    { "pwd",
+      "Prints the full path of the current folder.\n" },
+    { "read",
+      "Reads one line from stdin. Each name gets one field, split on IFS, and\n"
+      "the last name gets the rest of the line. Without a name the line goes into\n"
+      "REPLY. A backslash keeps the next character as it is, and a backslash at\n"
+      "the end joins the next line; -r keeps backslashes. Status 1 at the end of\n"
+      "the input.\n" },
+    { "set",
+      "set               list the variables\n"
+      "set -o explain    explain every line from now on; set +o explain stops\n"
+      "set -o            show the options\n"
+      "set -- a b        make a and b the arguments, $1 and $2\n" },
+    { "shift",
+      "Drops $1 and moves the rest down, so $2 becomes $1. shift n drops n.\n" },
+    { "source",
+      "Reads file and runs its commands in this shell, so its variables and cd\n"
+      "stay. Arguments after file are $1, $2, ... while it runs. Without a /,\n"
+      "file is looked for in PATH, then in this folder. The same as .\n" },
+    { "true",
+      "Gives status 0 and does nothing else.\n" },
+    { "unset",
+      "Removes the variables, from the shell and from what commands get.\n" },
+};
+
 static void print_help_line(const struct builtin *b)
 {
     printf("  %-26s %s\n", b->usage, b->summary);
+}
+
+/* The usage line, then the details, each line indented. */
+static void print_help_page(const struct builtin *b)
+{
+    printf("%s\n", b->usage);
+    for (size_t i = 0; i < sizeof details / sizeof details[0]; i++) {
+        const char *p = details[i].text;
+
+        if (strcmp(details[i].name, b->name) != 0)
+            continue;
+        while (*p != '\0') {
+            size_t n = strcspn(p, "\n");
+
+            printf("    %.*s\n", (int)n, p);
+            p += n + (p[n] == '\n');
+        }
+        return;
+    }
+    printf("    %s\n", b->summary); /* every built-in has details; this is just in case */
 }
 
 static int builtin_help(struct shell *sh, int argc, char **argv)
@@ -822,16 +910,17 @@ static int builtin_help(struct shell *sh, int argc, char **argv)
         puts("acsh built-ins:");
         for (size_t i = 0; i < NBUILTINS; i++)
             print_help_line(&builtins[i]);
-        puts("Anything else runs as a program from PATH.");
+        puts("Anything else runs as a program from PATH. `help name` shows more about\n"
+             "one, and `explain command` shows what acsh does to run a command.");
         return 0;
     }
     for (int i = 1; i < argc; i++) {
         const struct builtin *b = builtin_find(argv[i]);
 
         if (b != NULL) {
-            print_help_line(b);
+            print_help_page(b);
         } else {
-            fprintf(stderr, "acsh: help: no help for '%s'\n", argv[i]);
+            shell_error(sh, "help: no help for '%s'", argv[i]);
             status = 1;
         }
     }
@@ -859,7 +948,7 @@ int builtin_run(struct shell *sh, const struct builtin *b, char **argv)
     clearerr(stdout);
     status = b->run(sh, argc, argv);
     if (fflush(stdout) != 0 || ferror(stdout)) {
-        fprintf(stderr, "acsh: %s: write error: %s\n", b->name, strerror(errno));
+        shell_error(sh, "%s: write error: %s", b->name, strerror(errno));
         clearerr(stdout);
         if (status == 0)
             status = 1;

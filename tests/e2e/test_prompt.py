@@ -1,4 +1,8 @@
-"""The interactive shell, in a pseudo-terminal: the prompt, exit and Ctrl+D."""
+"""The interactive shell, in a pseudo-terminal: the prompt, exit and Ctrl+D.
+
+The terminal fixture sets TERM=dumb, so the prompt has no colors here;
+test_messages.py checks the colors.
+"""
 
 import os
 import pwd
@@ -8,11 +12,13 @@ import socket
 import pexpect
 
 
-def expected_prompt(folder):
+def expected_prompt(folder, status=0):
+    """The two lines of the prompt, as the terminal shows them."""
     user = pwd.getpwuid(os.geteuid()).pw_name
     host = socket.gethostname().split(".")[0]
     mark = "#" if os.geteuid() == 0 else "$"
-    return f"{user}@{host}:{folder}{mark} "
+    failed = f"  exit {status}" if status else ""
+    return f"{user}@{host} {folder}{failed}\r\nacsh{mark} "
 
 
 def test_prompt_shows_user_host_and_folder(terminal, workdir):
@@ -35,6 +41,17 @@ def test_prompt_matches_whole_folder_names_only(terminal, workdir):
     (workdir / "ac2").mkdir()
     shell = terminal(env={"HOME": str(workdir / "ac")}, cwd=workdir / "ac2")
     shell.expect_exact(expected_prompt(workdir / "ac2"))
+
+
+def test_prompt_shows_how_the_last_command_failed(terminal, workdir):
+    shell = terminal(env={"HOME": "/nonexistent-home"})
+    shell.expect_exact(expected_prompt(workdir))
+    shell.sendline("false")
+    shell.expect_exact(expected_prompt(workdir, 1))
+    shell.sendline("nope")
+    shell.expect_exact(expected_prompt(workdir, 127))
+    shell.sendline("true")
+    shell.expect_exact(expected_prompt(workdir))
 
 
 def test_prompt_comes_back_after_each_command(terminal):

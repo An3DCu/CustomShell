@@ -8,6 +8,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "error.h"
 #include "exec.h"
 #include "explain.h"
 #include "input.h"
@@ -88,7 +89,12 @@ int script_run(struct shell *sh, struct reader *r)
     size_t cap = 0;
     char err[256] = "";
     bool ran = false;
+    const char *saved_where = sh->where;
+    int saved_line = sh->line;
+    int saved_unit = sh->unit_line;
+    int unit = 1; /* the line the command being read starts on */
 
+    sh->where = r->name;
     for (;;) {
         struct list *list;
         enum parse_status st;
@@ -96,11 +102,16 @@ int script_run(struct shell *sh, struct reader *r)
 
         if (r->interactive) {
             if (cmd.len == 0)
-                prompt_print(vars_get(&sh->vars, "HOME"));
+                prompt_print(sh);
             else
                 fputs("> ", stderr); /* the command isn't finished yet */
         }
+        if (cmd.len == 0)
+            unit = r->lines + 1;
         n = read_line(r, &line, &cap);
+        if (n >= 0)
+            r->lines++;
+        sh->line = r->lines; /* for errors found while reading */
         if (n < 0) {
             if (errno == EINTR) {
                 /* Ctrl+C at the prompt: drop what was typed, start again.
@@ -112,10 +123,10 @@ int script_run(struct shell *sh, struct reader *r)
                 continue;
             }
             if (errno != 0) {
-                fprintf(stderr, "acsh: reading input: %s\n", strerror(errno));
+                shell_error(sh, "reading input: %s", strerror(errno));
             } else if (cmd.len > 0) {
                 /* The input ended in the middle of a command. */
-                fprintf(stderr, "acsh: %s\n", err);
+                shell_error(sh, "%s", err);
                 sh->status = 2;
                 ran = true;
             } else if (r->interactive) {
@@ -132,12 +143,15 @@ int script_run(struct shell *sh, struct reader *r)
             continue; /* an empty line keeps the last status, as in bash */
         ran = true;
         if (st == PARSE_SYNTAX) {
-            fprintf(stderr, "acsh: %s\n", err);
+            shell_error(sh, "%s", err);
+            if (strcmp(err, "syntax error near '|'") == 0)
+                shell_hint(sh, "a | needs a command on both sides");
             sh->status = 2;
             if (!r->interactive)
                 break;
             continue;
         }
+        sh->unit_line = unit;
         run_text(sh, list);
         list_free(list);
         if (sh->exiting)
@@ -147,6 +161,9 @@ int script_run(struct shell *sh, struct reader *r)
     }
     free(cmd.text);
     free(line);
+    sh->where = saved_where;
+    sh->line = saved_line;
+    sh->unit_line = saved_unit;
     return ran ? sh->status : 0;
 }
 

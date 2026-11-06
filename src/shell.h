@@ -24,6 +24,9 @@ struct shell {
     bool explaining;  /* the line running now is being explained */
     int explain_fd;   /* the copy of stderr explain mode writes to; 0 until it starts */
     int explain_out;  /* where explain lines go now: explain_fd, or a child's report pipe */
+    const char *where; /* the script running now, for errors; NULL at the prompt or from a pipe */
+    int line;         /* the line in it of the command running now */
+    int unit_line;    /* the line where the command being run starts; commands count from it */
     struct vars vars;
 };
 
