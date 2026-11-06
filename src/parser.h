@@ -12,12 +12,17 @@
  *       command  words: ls -l
  *       command  words: grep c   redirections: 1 > n.txt
  *
- * Words and redirection targets are kept as typed (quotes included); they
- * are only unquoted when the command runs. Grammar for now:
+ * Words, assignments and redirection targets are kept as typed (quotes and
+ * $ included); they are only expanded when the command runs. Grammar for
+ * now:
  *
  *     pipeline    = command { "|" command }
  *     command     = ( word | redirection ) { word | redirection }
  *     redirection = [fd] ( "<" | ">" | ">>" | "<&" | ">&" ) word
+ *
+ * A word of the form NAME=value that comes before the command name is an
+ * assignment: in `X=1 Y=2 env`, X and Y are assignments, but in
+ * `env X=1` it's an argument.
  */
 
 enum redir_kind {
@@ -34,8 +39,11 @@ struct redirection {
     char *target;         /* file name, or fd number for the dups, as typed */
 };
 
-/* A command with no words is allowed: "> f" just creates f. */
+/* A command with no words is allowed: "> f" just creates f, and "X=1"
+ * sets X. */
 struct command {
+    char **assigns;       /* NAME=value before the command name, as typed, NULL-terminated */
+    size_t nassigns;
     char **words;         /* as typed, NULL-terminated */
     size_t nwords;
     struct redirection *redirs; /* in the order written; order matters */

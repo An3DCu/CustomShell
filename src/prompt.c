@@ -32,13 +32,13 @@ char *prompt_folder(const char *cwd, const char *home)
     return xstrdup(cwd);
 }
 
-void prompt_print(void)
+void prompt_print(const char *home)
 {
     const struct passwd *pw = getpwuid(geteuid());
     const char *user = pw ? pw->pw_name : getenv("USER");
     char host[256];
     char *cwd = xgetcwd();
-    char *folder = prompt_folder(cwd ? cwd : "?", getenv("HOME"));
+    char *folder = prompt_folder(cwd ? cwd : "?", home);
 
     if (gethostname(host, sizeof host) != 0)
         strcpy(host, "?");

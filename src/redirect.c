@@ -8,7 +8,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "lexer.h"
+#include "expand.h"
 #include "xalloc.h"
 
 /* The shell's copies live from here up, away from the 0 to 9 people use. */
@@ -131,16 +131,21 @@ static bool apply_file(const struct redirection *r, const char *target)
     return true;
 }
 
-bool redir_apply(const struct command *cmd, struct redir_undo *undo)
+bool redir_apply(struct shell *sh, const struct command *cmd, struct redir_undo *undo)
 {
     for (size_t i = 0; i < cmd->nredirs; i++) {
         const struct redirection *r = &cmd->redirs[i];
+        char err[256];
         char *target;
         bool ok;
 
         if (undo != NULL && !backup(undo, r->fd))
             return false;
-        target = word_unquote(r->target);
+        target = expand_one(sh, r->target, err, sizeof err);
+        if (target == NULL) {
+            fprintf(stderr, "acsh: %s\n", err);
+            return false;
+        }
         if (r->kind == REDIR_DUP_IN || r->kind == REDIR_DUP_OUT)
             ok = apply_dup(r, target);
         else

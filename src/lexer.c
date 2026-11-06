@@ -109,7 +109,7 @@ static bool scan_word(const char *line, size_t start, size_t *end, bool *quoted,
                     return false;
                 }
                 /* Step over the escaped character, so \" doesn't close the
-                 * quote. Whether the backslash stays is word_unquote's job. */
+                 * quote. Whether the backslash stays is decided in expand.c. */
                 if (line[i] == '\\' && line[i + 1] != '\0')
                     i++;
                 i++;
@@ -228,49 +228,4 @@ const char *token_spelling(const struct token *tok)
     case TOK_END:      return "end of line";
     }
     return "?";
-}
-
-/* Inside double quotes, a backslash only escapes these. */
-static bool escapable_in_double_quotes(char c)
-{
-    return c == '$' || c == '`' || c == '"' || c == '\\' || c == '\n';
-}
-
-char *word_unquote(const char *word)
-{
-    char *out = xmalloc(strlen(word) + 1); /* unquoting only ever shrinks */
-    size_t o = 0;
-    size_t i = 0;
-
-    while (word[i] != '\0') {
-        if (word[i] == '\'') {
-            i++;
-            while (word[i] != '\'' && word[i] != '\0')
-                out[o++] = word[i++];
-            if (word[i] != '\0')
-                i++;
-        } else if (word[i] == '"') {
-            i++;
-            while (word[i] != '"' && word[i] != '\0') {
-                if (word[i] == '\\' && word[i + 1] != '\0'
-                    && escapable_in_double_quotes(word[i + 1])) {
-                    if (word[i + 1] != '\n')
-                        out[o++] = word[i + 1];
-                    i += 2;
-                } else {
-                    out[o++] = word[i++];
-                }
-            }
-            if (word[i] != '\0')
-                i++;
-        } else if (word[i] == '\\' && word[i + 1] != '\0') {
-            if (word[i + 1] != '\n')
-                out[o++] = word[i + 1];
-            i += 2;
-        } else {
-            out[o++] = word[i++];
-        }
-    }
-    out[o] = '\0';
-    return out;
 }

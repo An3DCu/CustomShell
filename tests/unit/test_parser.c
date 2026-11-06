@@ -53,6 +53,9 @@ static const char *describe(const char *line)
 
         if (c > 0)
             used += (size_t)snprintf(described + used, sizeof described - used, " | ");
+        for (size_t a = 0; a < cmd->nassigns; a++, sep = " ")
+            used += (size_t)snprintf(described + used, sizeof described - used,
+                                     "%sset(%s)", sep, cmd->assigns[a]);
         for (size_t w = 0; w < cmd->nwords; w++, sep = " ")
             used += (size_t)snprintf(described + used, sizeof described - used,
                                      "%s%s", sep, cmd->words[w]);
@@ -109,6 +112,25 @@ static void test_redirections_anywhere_in_a_command(void)
 {
     CHECK_PARSE("> out echo hi", "echo hi 1>out");
     CHECK_PARSE("echo > out hi", "echo hi 1>out");
+}
+
+static void test_assignments(void)
+{
+    CHECK_PARSE("X=1", "set(X=1)");
+    CHECK_PARSE("X=1 Y=\"a b\" env", "set(X=1) set(Y=\"a b\") env");
+    CHECK_PARSE("X= cmd", "set(X=) cmd");
+    CHECK_PARSE("_a1=x", "set(_a1=x)");
+    CHECK_PARSE("X=1 > f Y=2 cmd", "set(X=1) set(Y=2) cmd 1>f");
+}
+
+static void test_words_that_are_not_assignments(void)
+{
+    CHECK_PARSE("echo X=1", "echo X=1");        /* after the command name */
+    CHECK_PARSE("\"X\"=1", "\"X\"=1");          /* a quoted name */
+    CHECK_PARSE("1X=1", "1X=1");
+    CHECK_PARSE("=1", "=1");
+    CHECK_PARSE("X-Y=1", "X-Y=1");
+    CHECK_PARSE("X=1 | Y=2 cmd", "set(X=1) | set(Y=2) cmd");
 }
 
 static void test_command_with_only_redirections(void)
@@ -211,6 +233,8 @@ int main(void)
     RUN(test_redirections);
     RUN(test_redirection_order_is_kept);
     RUN(test_redirections_anywhere_in_a_command);
+    RUN(test_assignments);
+    RUN(test_words_that_are_not_assignments);
     RUN(test_command_with_only_redirections);
     RUN(test_empty_lines);
     RUN(test_syntax_errors_name_the_token);
