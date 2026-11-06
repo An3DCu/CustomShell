@@ -9,6 +9,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "explain.h"
 #include "input.h"
 #include "script.h"
 #include "strvec.h"
@@ -681,6 +682,87 @@ static int builtin_source(struct shell *sh, int argc, char **argv)
     return status;
 }
 
+/* ---- set and explain ---------------------------------------------------- */
+
+/* set with nothing: every variable, NAME='value', sorted, as dash prints
+ * them. */
+static void print_variables(const struct shell *sh)
+{
+    size_t n;
+    const struct var **list = vars_sorted(&sh->vars, &n);
+
+    for (size_t i = 0; i < n; i++) {
+        if (list[i]->value == NULL || !var_name_valid(list[i]->name))
+            continue;
+        printf("%s=", list[i]->name);
+        print_quoted(list[i]->value);
+        putchar('\n');
+    }
+    free(list);
+}
+
+/* set -o explain / set +o explain. The line that runs set isn't explained
+ * after all; the ones after it are. */
+static int set_option(struct shell *sh, bool on, const char *name)
+{
+    if (name == NULL) {
+        printf("explain         %s\n", sh->explain_all ? "on" : "off");
+        return 0;
+    }
+    if (strcmp(name, "explain") != 0) {
+        fprintf(stderr, "acsh: set: %s: no such option (acsh has explain)\n", name);
+        return 2;
+    }
+    if (on && !explain_start(sh))
+        return 1;
+    sh->explain_all = on;
+    return 0;
+}
+
+/*
+ * set                 list the variables
+ * set -o | +o         show the options
+ * set -o explain      explain every line from now on; +o turns it off
+ * set [--] arg ...    make the args $1, $2, ...
+ */
+static int builtin_set(struct shell *sh, int argc, char **argv)
+{
+    int i = 1;
+
+    if (argc == 1) {
+        print_variables(sh);
+        return 0;
+    }
+    if (strcmp(argv[1], "-o") == 0 || strcmp(argv[1], "+o") == 0) {
+        if (argc > 3) {
+            fputs("acsh: set: too many arguments\n", stderr);
+            return 2;
+        }
+        return set_option(sh, argv[1][0] == '-', argc == 3 ? argv[2] : NULL);
+    }
+    if (strcmp(argv[1], "--") == 0) {
+        i = 2;
+    } else if ((argv[1][0] == '-' || argv[1][0] == '+') && argv[1][1] != '\0') {
+        fprintf(stderr, "acsh: set: %s isn't supported yet (only -o explain)\n", argv[1]);
+        return 2;
+    }
+    strvec_free(&sh->params);
+    for (; i < argc; i++)
+        strvec_push(&sh->params, xstrdup(argv[i]));
+    return 0;
+}
+
+/* explain only means something at the start of a line, where the parser
+ * takes it; anywhere else this runs instead. */
+static int builtin_explain(struct shell *sh, int argc, char **argv)
+{
+    (void)sh;
+    (void)argc;
+    (void)argv;
+    fputs("acsh: explain: put it at the start of a line, before the command\n", stderr);
+    return 2;
+}
+
 /* ---- help --------------------------------------------------------------- */
 
 static int builtin_help(struct shell *sh, int argc, char **argv);
@@ -700,6 +782,8 @@ static const struct builtin builtins[] = {
       "Print the words. -n: no newline at the end. -e: read \\n, \\t and other escapes.", false },
     { "exit",   builtin_exit,   "exit [n]",
       "Leave acsh with status n, or with the last command's status.", true },
+    { "explain", builtin_explain, "explain command ...",
+      "Show the plan and every fork, pipe, dup2 and exec while it runs.", false },
     { "export", builtin_export, "export [name[=value] ...]",
       "Pass variables on to commands. With no names, list the ones passed on.", true },
     { "false",  builtin_false,  "false",
@@ -710,6 +794,8 @@ static const struct builtin builtins[] = {
       "Print the current folder.", false },
     { "read",   builtin_read,   "read [-r] [name ...]",
       "Read a line from stdin into the names, split on IFS. -r: keep backslashes.", false },
+    { "set",    builtin_set,    "set [-o|+o explain] [arg]",
+      "-o explain: explain every line, +o: stop. With args: set $1, $2, ...", true },
     { "shift",  builtin_shift,  "shift [n]",
       "Drop the first n arguments ($1 ...), 1 if n isn't given.", true },
     { "source", builtin_source, "source file [arg ...]",

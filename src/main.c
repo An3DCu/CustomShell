@@ -25,14 +25,16 @@ extern char **environ; /* POSIX: declared by the program itself */
 
 static void usage(FILE *out)
 {
-    fputs("usage: acsh [--own-tools] [file [arg ...]]\n"
-          "       acsh [--own-tools] -c command [name [arg ...]]\n"
+    fputs("usage: acsh [--own-tools] [--explain] [file [arg ...]]\n"
+          "       acsh [--own-tools] [--explain] -c command [name [arg ...]]\n"
           "       acsh --help | --version\n"
           "\n"
           "  file         run the commands in file, with args as $1, $2, ...\n"
           "  -c command   run command, with name as $0 and args as $1, $2, ...\n"
           "  --own-tools  use my own cat, head, wc and the other tools from the\n"
           "               tools folder next to acsh, before the system's\n"
+          "  --explain    show the plan and every system call for each line\n"
+          "               (like typing explain in front of every line)\n"
           "\n"
           "With neither, acsh reads commands from stdin, with a prompt when\n"
           "that's a terminal.\n",
@@ -135,7 +137,9 @@ int main(int argc, char **argv)
             i++;
             break;
         }
-        if (strcmp(argv[i], "--own-tools") == 0) {
+        if (strcmp(argv[i], "--explain") == 0) {
+            sh.explain_all = true;
+        } else if (strcmp(argv[i], "--own-tools") == 0) {
             if (!use_own_tools(&sh)) {
                 status = 2;
                 goto out;
