@@ -76,6 +76,17 @@ void signals_drop_pending(void)
     }
 }
 
+bool signals_take_interrupt(void)
+{
+    sigset_t pending;
+
+    sigpending(&pending);
+    if (!sigismember(&pending, SIGINT))
+        return false;
+    signals_drop_pending();
+    return true;
+}
+
 void signals_reset_in_child(void)
 {
     set_handler(SIGINT, SIG_DFL);

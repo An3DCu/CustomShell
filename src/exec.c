@@ -156,6 +156,151 @@ static int wait_for(struct shell *sh, pid_t pid)
     return exit_status_from_wait(wstatus);
 }
 
+/* ---- if, while, until and for ------------------------------------------ */
+
+/* Something that ends every running list: exit, Ctrl+C, break, continue. */
+static bool cut_short(const struct shell *sh)
+{
+    return sh->exiting || sh->interrupted || sh->breaks > 0 || sh->continues > 0;
+}
+
+/*
+ * Called by a loop after each run of its condition or body: true if the
+ * loop has to end. break n and continue n count down one loop at a time,
+ * so `break 2` ends this loop and the one around it, and `continue 2` ends
+ * this one and goes on with the next round of the outer one.
+ */
+static bool loop_ends(struct shell *sh)
+{
+    if (sh->exiting || sh->interrupted)
+        return true;
+    if (sh->breaks > 0) {
+        sh->breaks--;
+        return true;
+    }
+    if (sh->continues > 0) {
+        sh->continues--;
+        return sh->continues > 0;
+    }
+    if (signals_take_interrupt()) {
+        /* Ctrl+C while only built-ins ran, as in `while :; do :; done` */
+        sh->interrupted = true;
+        sh->status = 130;
+        return true;
+    }
+    return false;
+}
+
+/* The status a loop gives: its last body's, or 0 if the body never ran,
+ * except after exit or Ctrl+C, which keep theirs. */
+static int loop_status(const struct shell *sh, int body_status)
+{
+    return sh->exiting || sh->interrupted ? sh->status : body_status;
+}
+
+/* if: the first branch whose condition gives 0 runs; the status is that
+ * body's, or else's, or 0 when nothing ran. */
+static int run_if(struct shell *sh, const struct command *cmd)
+{
+    for (size_t i = 0; i < cmd->nbranches; i++) {
+        int cond = run_list(sh, cmd->branches[i].cond);
+
+        if (cut_short(sh))
+            return sh->status;
+        if (cond == 0)
+            return run_list(sh, cmd->branches[i].body);
+    }
+    if (cmd->body != NULL)
+        return run_list(sh, cmd->body);
+    return 0;
+}
+
+/* while runs the body as long as the condition gives 0, until as long as
+ * it doesn't. */
+static int run_while(struct shell *sh, const struct command *cmd)
+{
+    int status = 0;
+
+    sh->loop_depth++;
+    for (;;) {
+        int cond = run_list(sh, cmd->cond);
+
+        if (loop_ends(sh))
+            break;
+        if ((cond == 0) != (cmd->kind == CMD_WHILE))
+            break;
+        status = run_list(sh, cmd->body);
+        if (loop_ends(sh))
+            break;
+    }
+    sh->loop_depth--;
+    return loop_status(sh, status);
+}
+
+/* for x in words: the words are expanded once, before the first round,
+ * so `for f in *.c` sees the files as they were then. Without `in` it
+ * loops over a copy of "$@", so a shift in the body changes nothing. */
+static int run_for(struct shell *sh, const struct command *cmd)
+{
+    struct strvec values = { 0 };
+    char err[256];
+    int status = 0;
+
+    if (cmd->has_in) {
+        if (!expand_words(sh, cmd->words, cmd->nwords, &values, err, sizeof err)) {
+            fprintf(stderr, "acsh: %s\n", err);
+            strvec_free(&values);
+            return 2;
+        }
+    } else {
+        for (size_t i = 0; i < sh->params.len; i++)
+            strvec_push(&values, xstrdup(sh->params.items[i]));
+    }
+    sh->loop_depth++;
+    for (size_t i = 0; i < values.len; i++) {
+        vars_set(&sh->vars, cmd->var, values.items[i]);
+        status = run_list(sh, cmd->body);
+        if (loop_ends(sh))
+            break;
+    }
+    sh->loop_depth--;
+    strvec_free(&values);
+    return loop_status(sh, status);
+}
+
+static int run_compound(struct shell *sh, const struct command *cmd)
+{
+    switch (cmd->kind) {
+    case CMD_IF:
+        return run_if(sh, cmd);
+    case CMD_WHILE:
+    case CMD_UNTIL:
+        return run_while(sh, cmd);
+    case CMD_FOR:
+        return run_for(sh, cmd);
+    case CMD_SIMPLE:
+        break;
+    }
+    return 0;
+}
+
+/* A compound on its own runs in the shell, so `for` sets the variable for
+ * later and `while ... done < file` gives the file back afterwards. */
+static int run_compound_here(struct shell *sh, const struct command *cmd)
+{
+    struct redir_undo undo = { 0 };
+    int status;
+
+    fflush(stdout);
+    if (redir_apply(sh, cmd, &undo))
+        status = run_compound(sh, cmd);
+    else
+        status = 1;
+    fflush(stdout);
+    redir_restore(&undo);
+    return status;
+}
+
 /*
  * Runs one command of a pipeline in a child that already has its pipe ends
  * on stdin and stdout. argv is the expanded words if the shell expanded them
@@ -172,6 +317,16 @@ static _Noreturn void run_in_child(struct shell *sh, const struct command *cmd, 
     const struct builtin *b;
     int err;
 
+    if (cmd->kind != CMD_SIMPLE) {
+        /* `for ...; done | sort`: the whole loop runs in this child */
+        int status;
+
+        if (!redir_apply(sh, cmd, NULL))
+            _exit(1);
+        status = run_compound(sh, cmd);
+        fflush(stdout);
+        _exit(status);
+    }
     if (argv == NULL) {
         if (!expand_argv(sh, cmd, &own))
             _exit(2);
@@ -319,6 +474,8 @@ static int run_pipeline(struct shell *sh, const struct pipeline *pl)
 
     if (pl->ncommands > 1)
         return run_forked(sh, pl, NULL);
+    if (cmd->kind != CMD_SIMPLE)
+        return run_compound_here(sh, cmd);
 
     /* Expand first: only then is it clear what runs. After X=cd, `$X /`
      * runs the built-in, and an empty $E leaves no command at all. */
@@ -364,7 +521,7 @@ int run_list(struct shell *sh, const struct list *list)
             if (pl->negate)
                 status = status == 0 ? 1 : 0;
             sh->status = status;
-            if (sh->exiting || sh->interrupted)
+            if (cut_short(sh))
                 return sh->status;
         }
     }

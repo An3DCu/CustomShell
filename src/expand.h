@@ -34,6 +34,11 @@
 bool expand_command(struct shell *sh, char *const *words, size_t nwords,
                     struct strvec *out, char *err, size_t errlen);
 
+/* The same for words that aren't a command, like the ones after `for x
+ * in`: no special case for export. */
+bool expand_words(struct shell *sh, char *const *words, size_t nwords,
+                  struct strvec *out, char *err, size_t errlen);
+
 /* Expands one word into one string, with no splitting and no file names:
  * for redirection targets, so `> $F` with F="a b" writes to the file "a b",
  * and `> *.log` to a file called *.log, as in dash.

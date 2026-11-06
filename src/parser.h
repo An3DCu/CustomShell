@@ -26,8 +26,19 @@
  *     list        = and_or { ( ";" | newline ) and_or } [";"]
  *     and_or      = pipeline { ( "&&" | "||" ) [newline] pipeline }
  *     pipeline    = ["!"] command { "|" [newline] command }
- *     command     = ( word | redirection ) { word | redirection }
+ *     command     = simple | compound { redirection }
+ *     simple      = ( word | redirection ) { word | redirection }
+ *     compound    = "if" list "then" list { "elif" list "then" list }
+ *                        [ "else" list ] "fi"
+ *                 | ( "while" | "until" ) list "do" list "done"
+ *                 | "for" name [newline] [ "in" { word } ( ";" | newline ) ]
+ *                        [newline] "do" list "done"
  *     redirection = [fd] ( "<" | ">" | ">>" | "<&" | ">&" ) word
+ *
+ * The words in quotes are reserved words. They only count where a command
+ * starts and when not quoted: `echo if` prints if, and `"if"` is a command
+ * called if. Inside a compound, a list ends at the reserved word that comes
+ * next (then, elif, else, fi, do, done).
  *
  * A word of the form NAME=value that comes before the command name is an
  * assignment: in `X=1 Y=2 env`, X and Y are assignments, but in
@@ -48,15 +59,38 @@ struct redirection {
     char *target;         /* file name, or fd number for the dups, as typed */
 };
 
-/* A command with no words is allowed: "> f" just creates f, and "X=1"
- * sets X. */
+struct list;
+
+enum command_kind {
+    CMD_SIMPLE,
+    CMD_IF,
+    CMD_WHILE,
+    CMD_UNTIL,
+    CMD_FOR,
+};
+
+/* if cond; then body (also each elif) */
+struct if_branch {
+    struct list *cond;
+    struct list *body;
+};
+
+/* A simple command with no words is allowed: "> f" just creates f, and
+ * "X=1" sets X. Which fields are used depends on kind. */
 struct command {
-    char **assigns;       /* NAME=value before the command name, as typed, NULL-terminated */
+    enum command_kind kind;
+    char **assigns;       /* simple: NAME=value before the name, as typed, NULL-terminated */
     size_t nassigns;
-    char **words;         /* as typed, NULL-terminated */
+    char **words;         /* simple: the words; for: the words after in. As typed, NULL-terminated */
     size_t nwords;
-    struct redirection *redirs; /* in the order written; order matters */
+    struct redirection *redirs; /* any kind, in the order written; order matters */
     size_t nredirs;
+    struct if_branch *branches; /* if: the if and every elif */
+    size_t nbranches;
+    struct list *cond;    /* while, until */
+    struct list *body;    /* while, until, for; for if, the else part (or NULL) */
+    char *var;            /* for: the variable */
+    bool has_in;          /* for: false means `for x; do`, which loops over "$@" */
 };
 
 /* When a pipeline in an and-or runs, decided by the status before it. */

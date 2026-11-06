@@ -3,7 +3,10 @@
  * " | ", each with its words as typed, then its redirections with the fd
  * spelled out (> becomes 1>, < becomes 0<), in the order they were written.
  * Pipelines are joined by " && " or " || ", the list's items by " ; ", and
- * a negated pipeline starts with "! ".
+ * a negated pipeline starts with "! ". A compound command shows its lists
+ * in braces:
+ *
+ *     if a; then b; else c; fi > f   ->   if {a} then {b} else {c} fi 1>f
  *
  *     ls -l | wc -l > n.txt; echo x   ->   ls -l | wc -l 1>n.txt ; echo x
  *
@@ -30,6 +33,58 @@ static const char *redir_op(enum redir_kind kind)
     return "?";
 }
 
+static size_t describe_list(const struct list *list, size_t used);
+
+#define ADD(...) (used += (size_t)snprintf(described + used, sizeof described - used, __VA_ARGS__))
+
+static size_t describe_block(const char *word, const struct list *list, size_t used)
+{
+    ADD(" %s {", word);
+    used = describe_list(list, used);
+    ADD("}");
+    return used;
+}
+
+static size_t describe_compound(const struct command *cmd, size_t used)
+{
+    switch (cmd->kind) {
+    case CMD_IF:
+        for (size_t b = 0; b < cmd->nbranches; b++) {
+            ADD("%s {", b == 0 ? "if" : " elif");
+            used = describe_list(cmd->branches[b].cond, used);
+            ADD("}");
+            used = describe_block("then", cmd->branches[b].body, used);
+        }
+        if (cmd->body != NULL)
+            used = describe_block("else", cmd->body, used);
+        ADD(" fi");
+        break;
+    case CMD_WHILE:
+    case CMD_UNTIL:
+        ADD("%s {", cmd->kind == CMD_WHILE ? "while" : "until");
+        used = describe_list(cmd->cond, used);
+        ADD("}");
+        used = describe_block("do", cmd->body, used);
+        ADD(" done");
+        break;
+    case CMD_FOR:
+        ADD("for %s", cmd->var);
+        if (cmd->has_in) {
+            ADD(" in");
+            for (size_t w = 0; w < cmd->nwords; w++)
+                ADD(" %s", cmd->words[w]);
+        }
+        used = describe_block("do", cmd->body, used);
+        ADD(" done");
+        break;
+    case CMD_SIMPLE:
+        break;
+    }
+    for (size_t r = 0; r < cmd->nredirs; r++)
+        ADD(" %d%s%s", cmd->redirs[r].fd, redir_op(cmd->redirs[r].kind), cmd->redirs[r].target);
+    return used;
+}
+
 static size_t describe_pipeline(const struct pipeline *pl, size_t used)
 {
     if (pl->negate)
@@ -40,6 +95,10 @@ static size_t describe_pipeline(const struct pipeline *pl, size_t used)
 
         if (c > 0)
             used += (size_t)snprintf(described + used, sizeof described - used, " | ");
+        if (cmd->kind != CMD_SIMPLE) {
+            used = describe_compound(cmd, used);
+            continue;
+        }
         for (size_t a = 0; a < cmd->nassigns; a++, sep = " ")
             used += (size_t)snprintf(described + used, sizeof described - used,
                                      "%sset(%s)", sep, cmd->assigns[a]);
@@ -73,6 +132,13 @@ static const char *describe(const char *line)
     case PARSE_OK:
         break;
     }
+    describe_list(list, used);
+    list_free(list);
+    return described;
+}
+
+static size_t describe_list(const struct list *list, size_t used)
+{
     for (size_t i = 0; i < list->nitems; i++) {
         const struct and_or *ao = &list->items[i];
 
@@ -88,8 +154,7 @@ static const char *describe(const char *line)
             used = describe_pipeline(pl, used);
         }
     }
-    list_free(list);
-    return described;
+    return used;
 }
 
 #define CHECK_PARSE(line, want) CHECK_STR_EQ(want, describe(line))
@@ -231,6 +296,95 @@ static void test_list_syntax_errors(void)
     CHECK_PARSE("ls >\npwd", "syntax: syntax error near end of line");
 }
 
+static void test_if(void)
+{
+    CHECK_PARSE("if a; then b; fi", "if {a} then {b} fi");
+    CHECK_PARSE("if a\nthen\n b\n c\nfi\n", "if {a} then {b ; c} fi");
+    CHECK_PARSE("if a; then b; else c; fi", "if {a} then {b} else {c} fi");
+    CHECK_PARSE("if a; then b; elif c; then d; elif e; then f; else g; fi",
+                "if {a} then {b} elif {c} then {d} elif {e} then {f} else {g} fi");
+    CHECK_PARSE("if a && b; then c | d; fi", "if {a && b} then {c | d} fi");
+    CHECK_PARSE("if ! a; then b; fi", "if {! a} then {b} fi");
+    CHECK_PARSE("if a; then if b; then c; fi; fi", "if {a} then {if {b} then {c} fi} fi");
+    CHECK_PARSE("if a; then if b; then c; fi fi", "if {a} then {if {b} then {c} fi} fi");
+}
+
+static void test_loops(void)
+{
+    CHECK_PARSE("while a; do b; done", "while {a} do {b} done");
+    CHECK_PARSE("until a; do b; done", "until {a} do {b} done");
+    CHECK_PARSE("while a\ndo\nb\ndone", "while {a} do {b} done");
+    CHECK_PARSE("for x in a b c; do echo $x; done", "for x in a b c do {echo $x} done");
+    CHECK_PARSE("for x in; do b; done", "for x in do {b} done");
+    CHECK_PARSE("for x; do b; done", "for x do {b} done");
+    CHECK_PARSE("for x\ndo b; done", "for x do {b} done");
+    CHECK_PARSE("for x do b; done", "for x do {b} done");
+    CHECK_PARSE("for x\nin a\ndo b\ndone", "for x in a do {b} done");
+    CHECK_PARSE("for x in do done if; do b; done", "for x in do done if do {b} done");
+    CHECK_PARSE("for x in a; do for y in b; do c; done; done",
+                "for x in a do {for y in b do {c} done} done");
+}
+
+static void test_compound_in_pipelines_and_lists(void)
+{
+    CHECK_PARSE("for x in a; do b; done | sort", "for x in a do {b} done | sort");
+    CHECK_PARSE("cat f | while read l; do b; done", "cat f | while {read l} do {b} done");
+    CHECK_PARSE("if a; then b; fi && c || d", "if {a} then {b} fi && c || d");
+    CHECK_PARSE("! if a; then b; fi", "! if {a} then {b} fi");
+    CHECK_PARSE("x; while a; do b; done; y", "x ; while {a} do {b} done ; y");
+}
+
+static void test_compound_redirections(void)
+{
+    CHECK_PARSE("while read l; do b; done < f", "while {read l} do {b} done 0<f");
+    CHECK_PARSE("if a; then b; fi > out 2>&1", "if {a} then {b} fi 1>out 2>&1");
+    CHECK_PARSE("for x in a; do b; done >> log | cat", "for x in a do {b} done 1>>log | cat");
+}
+
+static void test_reserved_words_only_where_a_command_starts(void)
+{
+    CHECK_PARSE("echo if then fi do done", "echo if then fi do done");
+    CHECK_PARSE("\"if\" a", "\"if\" a");
+    CHECK_PARSE("'while' a", "'while' a");
+    CHECK_PARSE("X=1 if", "set(X=1) if");
+    CHECK_PARSE("if_x a", "if_x a");
+}
+
+static void test_compound_syntax_errors(void)
+{
+    CHECK_PARSE("fi", "syntax: syntax error near 'fi'");
+    CHECK_PARSE("then", "syntax: syntax error near 'then'");
+    CHECK_PARSE("done", "syntax: syntax error near 'done'");
+    CHECK_PARSE("echo a; fi", "syntax: syntax error near 'fi'");
+    CHECK_PARSE("a | fi", "syntax: syntax error near 'fi'");
+    CHECK_PARSE("if; then a; fi", "syntax: syntax error near ';'");
+    CHECK_PARSE("if a; then fi", "syntax: syntax error near 'fi'");
+    CHECK_PARSE("if a; then b; else fi", "syntax: syntax error near 'fi'");
+    CHECK_PARSE("if a then b; fi", "syntax: syntax error near 'fi'");
+    CHECK_PARSE("if a; then b; done", "syntax: syntax error near 'done'");
+    CHECK_PARSE("while a; done", "syntax: syntax error near 'done'");
+    CHECK_PARSE("while a; do done", "syntax: syntax error near 'done'");
+    CHECK_PARSE("if a; then b; fi c", "syntax: syntax error near 'c'");
+    CHECK_PARSE("for 1x in a; do b; done", "syntax: '1x' can't be a loop variable");
+    CHECK_PARSE("for x in a; b; do c; done", "syntax: syntax error near 'b'");
+    CHECK_PARSE("for x in a | b; do c; done", "syntax: syntax error near '|'");
+}
+
+static void test_unfinished_compounds(void)
+{
+    CHECK_PARSE("if a", "incomplete: missing 'then'");
+    CHECK_PARSE("if a; then", "incomplete: missing 'fi'");
+    CHECK_PARSE("if a; then b\n", "incomplete: missing 'fi'");
+    CHECK_PARSE("if a; then b; else c\n", "incomplete: missing 'fi'");
+    CHECK_PARSE("while a\n", "incomplete: missing 'do'");
+    CHECK_PARSE("while a; do b\n", "incomplete: missing 'done'");
+    CHECK_PARSE("for x", "incomplete: missing 'do'");
+    CHECK_PARSE("for x in a b\n", "incomplete: missing 'do'");
+    CHECK_PARSE("for x in a b", "incomplete: missing 'do'");
+    CHECK_PARSE("for", "incomplete: missing 'do'");
+    CHECK_PARSE("if a; then while b; do\n", "incomplete: missing 'done'");
+}
+
 static void test_not_supported_yet(void)
 {
     CHECK_PARSE("sleep 1 &", "syntax: '&' isn't supported yet");
@@ -344,6 +498,13 @@ int main(void)
     RUN(test_negation);
     RUN(test_comments);
     RUN(test_list_syntax_errors);
+    RUN(test_if);
+    RUN(test_loops);
+    RUN(test_compound_in_pipelines_and_lists);
+    RUN(test_compound_redirections);
+    RUN(test_reserved_words_only_where_a_command_starts);
+    RUN(test_compound_syntax_errors);
+    RUN(test_unfinished_compounds);
     RUN(test_not_supported_yet);
     RUN(test_unfinished_lines);
     RUN(test_lines_joined_by_a_backslash);
