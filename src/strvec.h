@@ -19,6 +19,9 @@ void strvec_push(struct strvec *v, char *s);
 /* items, never NULL: an empty list is just { NULL }. */
 char **strvec_items(struct strvec *v);
 
+/* Frees the first n strings (n <= len) and moves the rest down. */
+void strvec_remove_front(struct strvec *v, size_t n);
+
 /* Frees every string and the list, and leaves it empty. */
 void strvec_free(struct strvec *v);
 

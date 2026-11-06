@@ -6,8 +6,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
+#include "script.h"
+#include "strvec.h"
 #include "vars.h"
 #include "xalloc.h"
 
@@ -322,11 +325,125 @@ static int builtin_unset(struct shell *sh, int argc, char **argv)
     return status;
 }
 
+/* ---- shift -------------------------------------------------------------- */
+
+static int builtin_shift(struct shell *sh, int argc, char **argv)
+{
+    long n = 1;
+
+    if (argc > 2) {
+        fputs("acsh: shift: too many arguments\n", stderr);
+        return 1;
+    }
+    if (argc == 2 && !parse_number(argv[1], &n)) {
+        fprintf(stderr, "acsh: shift: %s: numeric argument required\n", argv[1]);
+        return 1;
+    }
+    if (n < 0 || (unsigned long)n > sh->params.len) {
+        fputs("acsh: shift: can't shift that many\n", stderr);
+        return 1;
+    }
+    strvec_remove_front(&sh->params, (size_t)n);
+    return 0;
+}
+
+/* ---- source and . -------------------------------------------------------- */
+
+/* A loop of files sourcing each other stops here instead of running out of
+ * file descriptors. */
+#define MAX_SOURCE_DEPTH 100
+
+static bool is_readable_file(const char *path)
+{
+    struct stat st;
+
+    return stat(path, &st) == 0 && S_ISREG(st.st_mode) && access(path, R_OK) == 0;
+}
+
+/* A name with a / is used as it is. Otherwise it's looked for in PATH, as
+ * POSIX says, and then in the current folder, as bash does, so
+ * `source setup.sh` works. Returns a new string, or NULL. */
+static char *find_sourced(const struct shell *sh, const char *name)
+{
+    const char *path = vars_get(&sh->vars, "PATH");
+
+    if (strchr(name, '/') != NULL)
+        return xstrdup(name);
+    while (path != NULL) {
+        const char *colon = strchr(path, ':');
+        size_t dlen = colon ? (size_t)(colon - path) : strlen(path);
+        char *candidate = xmalloc(dlen + strlen(name) + 3);
+
+        if (dlen == 0) /* an empty entry means the current folder */
+            sprintf(candidate, "./%s", name);
+        else
+            sprintf(candidate, "%.*s/%s", (int)dlen, path, name);
+        if (is_readable_file(candidate))
+            return candidate;
+        free(candidate);
+        path = colon ? colon + 1 : NULL;
+    }
+    if (is_readable_file(name))
+        return xstrdup(name);
+    return NULL;
+}
+
+/*
+ * source file [arg ...] runs the file's commands in this shell, so its
+ * variables and cd stay. With arguments, they are $1, $2, ... while it
+ * runs, and the old ones come back after. Its status is the last
+ * command's. An exit in the file leaves the shell, as POSIX says.
+ */
+static int builtin_source(struct shell *sh, int argc, char **argv)
+{
+    struct strvec saved = sh->params;
+    struct reader r = { 0 };
+    char *path;
+    int status;
+
+    if (argc < 2) {
+        fprintf(stderr, "acsh: %s: filename argument required\n", argv[0]);
+        return 2;
+    }
+    if (sh->source_depth >= MAX_SOURCE_DEPTH) {
+        fprintf(stderr, "acsh: %s: %s: sourced too deeply (a loop?)\n", argv[0], argv[1]);
+        return 1;
+    }
+    path = find_sourced(sh, argv[1]);
+    if (path == NULL) {
+        fprintf(stderr, "acsh: %s: %s: not found\n", argv[0], argv[1]);
+        return 1;
+    }
+    r.fd = script_open(path);
+    if (r.fd < 0) {
+        fprintf(stderr, "acsh: %s: %s: %s\n", argv[0], path, strerror(errno));
+        free(path);
+        return 1;
+    }
+    free(path);
+    if (argc > 2) {
+        sh->params = (struct strvec){ 0 };
+        for (int i = 2; i < argc; i++)
+            strvec_push(&sh->params, xstrdup(argv[i]));
+    }
+    sh->source_depth++;
+    status = script_run(sh, &r);
+    sh->source_depth--;
+    if (argc > 2) {
+        strvec_free(&sh->params);
+        sh->params = saved;
+    }
+    close(r.fd);
+    return status;
+}
+
 /* ---- help --------------------------------------------------------------- */
 
 static int builtin_help(struct shell *sh, int argc, char **argv);
 
 static const struct builtin builtins[] = {
+    { ".",      builtin_source, ". file [arg ...]",
+      "Run the commands in file in this shell. The same as source.", true },
     { "cd",     builtin_cd,     "cd [dir | -]",
       "Go to dir. With no dir, go home; with -, go back to the last folder.", false },
     { "echo",   builtin_echo,   "echo [-neE] [word ...]",
@@ -339,6 +456,10 @@ static const struct builtin builtins[] = {
       "List the built-ins, or show one.", false },
     { "pwd",    builtin_pwd,    "pwd",
       "Print the current folder.", false },
+    { "shift",  builtin_shift,  "shift [n]",
+      "Drop the first n arguments ($1 ...), 1 if n isn't given.", true },
+    { "source", builtin_source, "source file [arg ...]",
+      "Run the commands in file in this shell, with args as $1 ...", true },
     { "unset",  builtin_unset,  "unset name ...",
       "Remove the variables.", true },
 };

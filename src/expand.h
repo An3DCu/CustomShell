@@ -12,7 +12,7 @@
  * POSIX gives:
  *
  *   1. tilde        ~ and ~/x become $HOME, ~name becomes that user's home
- *   2. parameters   $X, ${X}, $?, $$, $0
+ *   2. parameters   $X, ${X}, $?, $$, $#, $0, $1..., $@, $*
  *   3. splitting    the result of an unquoted $X is cut into words on IFS
  *   4. file names   a word with an unquoted *, ? or [...] becomes the
  *                   names that match it, sorted (see pattern.h)
@@ -23,8 +23,7 @@
  * `echo $X` prints "a;" and "b", and runs nothing.
  *
  * $(...) and backquotes aren't supported yet and are reported as errors
- * instead of being printed as they are. Positional parameters ($1, $#, $@)
- * come with scripts.
+ * instead of being printed as they are.
  */
 
 /* Expands a command's words and adds the resulting fields to out. A word

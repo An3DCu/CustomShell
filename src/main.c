@@ -1,8 +1,9 @@
 /*
  * acsh: a small Unix shell.
  *
- * The main loop: show a prompt (only on a terminal), read a line, parse it,
- * run it, remember its exit status, and repeat until exit or end of input.
+ * main reads the options, sets up the shell, and hands the commands to
+ * script_run: from the terminal or a pipe, from a script file, or from the
+ * text after -c. See script.c for the loop itself.
  */
 #include <errno.h>
 #include <stdbool.h>
@@ -12,12 +13,10 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#include "exec.h"
-#include "input.h"
-#include "parser.h"
-#include "prompt.h"
+#include "script.h"
 #include "shell.h"
 #include "signals.h"
+#include "strvec.h"
 #include "vars.h"
 #include "version.h"
 #include "xalloc.h"
@@ -26,11 +25,17 @@ extern char **environ; /* POSIX: declared by the program itself */
 
 static void usage(FILE *out)
 {
-    fputs("usage: acsh [--own-tools]\n"
+    fputs("usage: acsh [--own-tools] [file [arg ...]]\n"
+          "       acsh [--own-tools] -c command [name [arg ...]]\n"
           "       acsh --help | --version\n"
           "\n"
+          "  file         run the commands in file, with args as $1, $2, ...\n"
+          "  -c command   run command, with name as $0 and args as $1, $2, ...\n"
           "  --own-tools  use my own cat, head, wc and the other tools from the\n"
-          "               tools folder next to acsh, before the system's\n",
+          "               tools folder next to acsh, before the system's\n"
+          "\n"
+          "With neither, acsh reads commands from stdin, with a prompt when\n"
+          "that's a terminal.\n",
           out);
 }
 
@@ -89,67 +94,26 @@ static bool use_own_tools(struct shell *sh)
     return true;
 }
 
-static void run_line(struct shell *sh, const char *line)
+/* Opens the script for `acsh file`, or says why it can't, with bash's
+ * exit statuses: 127 if it isn't there, 126 if it can't be read. */
+static int open_script(const char *path, int *status)
 {
-    struct pipeline *pl;
-    char err[256];
+    int fd = script_open(path);
 
-    switch (parse_line(line, &pl, err, sizeof err)) {
-    case PARSE_EMPTY:
-        return; /* an empty line keeps the last status, as in bash */
-    case PARSE_INCOMPLETE:
-    case PARSE_SYNTAX:
-        fprintf(stderr, "acsh: %s\n", err);
-        sh->status = 2;
-        return;
-    case PARSE_OK:
-        sh->interrupted = false;
-        sh->status = run_pipeline(sh, pl);
-        pipeline_free(pl);
-        /* The terminal shows ^C but no newline; start the prompt on a
-         * fresh line, as bash does. */
-        if (sh->interactive && sh->interrupted)
-            fputc('\n', stderr);
-        return;
+    if (fd < 0) {
+        fprintf(stderr, "acsh: %s: %s\n", path, strerror(errno));
+        *status = errno == ENOENT ? 127 : 126;
     }
-}
-
-static int shell_loop(struct shell *sh)
-{
-    char *line = NULL;
-    size_t cap = 0;
-
-    for (;;) {
-        if (sh->interactive)
-            prompt_print(vars_get(&sh->vars, "HOME"));
-        if (input_read_line(STDIN_FILENO, &line, &cap, sh->interactive) < 0) {
-            if (errno == EINTR) {
-                /* Ctrl+C at the prompt: drop the line, start a new one.
-                 * bash sets the status to 130 here too. */
-                fputc('\n', stderr);
-                sh->status = 130;
-                continue;
-            }
-            if (errno != 0)
-                fprintf(stderr, "acsh: reading input: %s\n", strerror(errno));
-            else if (sh->interactive)
-                fputc('\n', stderr); /* Ctrl+D: end the prompt's line */
-            break;
-        }
-        run_line(sh, line);
-        if (sh->exiting)
-            break;
-        if (sh->interactive)
-            signals_drop_pending();
-    }
-    free(line);
-    return sh->status;
+    return fd;
 }
 
 int main(int argc, char **argv)
 {
     struct shell sh = { 0 };
-    int status;
+    struct reader r = { .fd = STDIN_FILENO };
+    const char *command = NULL;
+    int status = 0;
+    int i = 1;
 
     if (argc == 2 && strcmp(argv[1], "--version") == 0) {
         printf("acsh %s\n", ACSH_VERSION);
@@ -163,25 +127,64 @@ int main(int argc, char **argv)
     vars_init(&sh.vars, environ);
     sh.pid = getpid();
     sh.name = argv[0];
-    for (int i = 1; i < argc; i++) {
+
+    /* Options come first; the first other word is the script, and
+     * everything after it belongs to the script. */
+    for (; i < argc && argv[i][0] == '-' && argv[i][1] != '\0'; i++) {
+        if (strcmp(argv[i], "--") == 0) {
+            i++;
+            break;
+        }
         if (strcmp(argv[i], "--own-tools") == 0) {
             if (!use_own_tools(&sh)) {
-                vars_free(&sh.vars);
-                return 2;
+                status = 2;
+                goto out;
             }
+        } else if (strcmp(argv[i], "-c") == 0) {
+            if (i + 1 >= argc) {
+                fputs("acsh: -c: needs a command\n", stderr);
+                usage(stderr);
+                status = 2;
+                goto out;
+            }
+            command = argv[++i];
+            i++;
+            break;
         } else {
             fprintf(stderr, "acsh: unknown option '%s'\n", argv[i]);
             usage(stderr);
-            vars_free(&sh.vars);
-            return 2;
+            status = 2;
+            goto out;
         }
     }
 
-    /* POSIX: a shell is interactive when stdin and stderr are terminals. */
-    sh.interactive = isatty(STDIN_FILENO) && isatty(STDERR_FILENO);
+    if (command != NULL) {
+        /* acsh -c 'echo $0 $1' name one */
+        r = (struct reader){ .fd = -1, .text = command };
+        if (i < argc)
+            sh.name = argv[i++];
+    } else if (i < argc) {
+        /* acsh script.sh one two: $0 is the script */
+        sh.name = argv[i++];
+        r.fd = open_script(sh.name, &status);
+        if (r.fd < 0)
+            goto out;
+    } else {
+        /* POSIX: reading commands from stdin, a shell is interactive when
+         * stdin and stderr are terminals. */
+        sh.interactive = isatty(STDIN_FILENO) && isatty(STDERR_FILENO);
+    }
+    for (; i < argc; i++)
+        strvec_push(&sh.params, xstrdup(argv[i]));
+
+    r.interactive = sh.interactive;
     if (sh.interactive)
         signals_init_interactive();
-    status = shell_loop(&sh);
+    status = script_run(&sh, &r);
+    if (r.fd > STDIN_FILENO)
+        close(r.fd);
+out:
+    strvec_free(&sh.params);
     vars_free(&sh.vars);
     return status;
 }

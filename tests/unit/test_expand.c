@@ -18,11 +18,13 @@
 static struct shell sh;
 static char described[4096];
 
-/* A fresh shell with no variables, $? = 0, $$ = 4242 and $0 = acsh. */
+/* A fresh shell with no variables or parameters, $? = 0, $$ = 4242 and
+ * $0 = acsh. */
 static void reset(void)
 {
     vars_free(&sh.vars);
     vars_init(&sh.vars, NULL);
+    strvec_free(&sh.params);
     sh.status = 0;
     sh.pid = 4242;
     sh.name = "acsh";
@@ -31,6 +33,14 @@ static void reset(void)
 static void set(const char *name, const char *value)
 {
     vars_set(&sh.vars, name, value);
+}
+
+/* $1, $2, ... from a NULL-terminated list. */
+static void params(const char *const *list)
+{
+    strvec_free(&sh.params);
+    for (size_t i = 0; list[i] != NULL; i++)
+        strvec_push(&sh.params, strdup(list[i]));
 }
 
 /* The fields of words[0..n) as "[a][b]", or "error: <why>". */
@@ -212,6 +222,7 @@ static void test_a_lone_dollar_stays(void)
     CHECK_STR_EQ("[a$]", fields("a$"));
     CHECK_STR_EQ("[$%]", fields("$%"));
     CHECK_STR_EQ("[$-x]", fields("$-x")); /* $- isn't supported; kept as typed */
+    CHECK_STR_EQ("[$!]", fields("$!"));   /* comes with background jobs */
 }
 
 static void test_bad_substitutions(void)
@@ -231,6 +242,74 @@ static void test_command_substitution_is_an_error_for_now(void)
     CHECK_STR_EQ("error: '`' isn't supported yet", fields("`ls`"));
     CHECK_STR_EQ("[`ls`]", fields("'`ls`'"));
     CHECK_STR_EQ("[`]", fields("\\`"));
+}
+
+/* ---- positional parameters ---------------------------------------------- */
+
+static const char *const three[] = { "a", "", "c d", NULL };
+
+static void test_numbered_parameters(void)
+{
+    reset();
+    params(three);
+    CHECK_STR_EQ("[a]", fields("$1"));
+    CHECK_STR_EQ("", fields("$2"));          /* empty and unquoted: no word */
+    CHECK_STR_EQ("[]", fields("\"$2\""));
+    CHECK_STR_EQ("[c][d]", fields("$3"));
+    CHECK_STR_EQ("[c d]", fields("\"${3}\""));
+    CHECK_STR_EQ("", fields("$4"));
+    CHECK_STR_EQ("[a0]", fields("$10"));     /* $1, then a 0 */
+    CHECK_STR_EQ("[3]", fields("$#"));
+    CHECK_STR_EQ("[3]", fields("${#}"));
+}
+
+static void test_ten_and_more(void)
+{
+    static const char *const many[] = { "1", "2", "3", "4", "5", "6", "7", "8", "9",
+                                        "ten", "eleven", NULL };
+
+    reset();
+    params(many);
+    CHECK_STR_EQ("[ten]", fields("${10}"));
+    CHECK_STR_EQ("[eleven]", fields("${11}"));
+    CHECK_STR_EQ("", fields("${12}"));
+    CHECK_STR_EQ("", fields("${99999999999999999999999}"));
+}
+
+static void test_at_and_star(void)
+{
+    reset();
+    params(three);
+    CHECK_STR_EQ("[a][][c d]", fields("\"$@\""));
+    CHECK_STR_EQ("[a][][c d]", fields("\"${@}\""));
+    CHECK_STR_EQ("[a][c][d]", fields("$@"));
+    CHECK_STR_EQ("[a  c d]", fields("\"$*\""));
+    CHECK_STR_EQ("[a][c][d]", fields("$*"));
+    CHECK_STR_EQ("[xa][][c dy]", fields("\"x$@y\""));
+    CHECK_STR_EQ("a  c d", one("$@"));
+    CHECK_STR_EQ("a  c d", assignment("$*"));
+}
+
+static void test_star_joins_with_ifs(void)
+{
+    reset();
+    params(three);
+    set("IFS", ":");
+    CHECK_STR_EQ("[a::c d]", fields("\"$*\""));
+    CHECK_STR_EQ("[a][][c d]", fields("\"$@\""));
+    set("IFS", "");
+    CHECK_STR_EQ("[ac d]", fields("\"$*\""));
+}
+
+static void test_no_parameters(void)
+{
+    reset();
+    CHECK_STR_EQ("", fields("\"$@\""));      /* not even an empty word */
+    CHECK_STR_EQ("[xy]", fields("\"x$@y\""));
+    CHECK_STR_EQ("[]", fields("\"$*\""));
+    CHECK_STR_EQ("", fields("$@"));
+    CHECK_STR_EQ("[0]", fields("$#"));
+    CHECK_STR_EQ("", fields("$1"));
 }
 
 /* ---- tilde -------------------------------------------------------------- */
@@ -390,6 +469,11 @@ int main(void)
     RUN(test_a_lone_dollar_stays);
     RUN(test_bad_substitutions);
     RUN(test_command_substitution_is_an_error_for_now);
+    RUN(test_numbered_parameters);
+    RUN(test_ten_and_more);
+    RUN(test_at_and_star);
+    RUN(test_star_joins_with_ifs);
+    RUN(test_no_parameters);
     RUN(test_tilde);
     RUN(test_tilde_is_not_split);
     RUN(test_tilde_without_home);
@@ -405,5 +489,6 @@ int main(void)
     RUN(test_quoted_export_is_an_ordinary_command);
     RUN(test_one_word_targets_are_not_split);
     vars_free(&sh.vars);
+    strvec_free(&sh.params);
     return check_summary();
 }
