@@ -506,13 +506,9 @@ char *expand_assignment(struct shell *sh, const char *value, char *err, size_t e
     return expand_string(sh, value, MODE_ASSIGN, err, errlen);
 }
 
-bool expand_command(struct shell *sh, char *const *words, size_t nwords,
-                    struct strvec *out, char *err, size_t errlen)
+static bool expand_list(struct shell *sh, char *const *words, size_t nwords,
+                        bool declaration, struct strvec *out, char *err, size_t errlen)
 {
-    /* Only when typed as plain `export`: POSIX calls it a declaration
-     * utility, and dash and bash both do this. */
-    bool declaration = nwords > 0 && strcmp(words[0], "export") == 0;
-
     for (size_t i = 0; i < nwords; i++) {
         const char *w = words[i];
         size_t n = var_name_len(w);
@@ -542,4 +538,20 @@ bool expand_command(struct shell *sh, char *const *words, size_t nwords,
         }
     }
     return true;
+}
+
+bool expand_command(struct shell *sh, char *const *words, size_t nwords,
+                    struct strvec *out, char *err, size_t errlen)
+{
+    /* Only when typed as plain `export`: POSIX calls it a declaration
+     * utility, and dash and bash both do this. */
+    bool declaration = nwords > 0 && strcmp(words[0], "export") == 0;
+
+    return expand_list(sh, words, nwords, declaration, out, err, errlen);
+}
+
+bool expand_words(struct shell *sh, char *const *words, size_t nwords,
+                  struct strvec *out, char *err, size_t errlen)
+{
+    return expand_list(sh, words, nwords, false, out, err, errlen);
 }

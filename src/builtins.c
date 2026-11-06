@@ -9,6 +9,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "input.h"
 #include "script.h"
 #include "strvec.h"
 #include "vars.h"
@@ -347,6 +348,249 @@ static int builtin_shift(struct shell *sh, int argc, char **argv)
     return 0;
 }
 
+/* ---- true, false and : -------------------------------------------------- */
+
+/* Built in so `while true` and `while :` don't start a program every round. */
+static int builtin_true(struct shell *sh, int argc, char **argv)
+{
+    (void)sh;
+    (void)argc;
+    (void)argv;
+    return 0;
+}
+
+static int builtin_false(struct shell *sh, int argc, char **argv)
+{
+    (void)sh;
+    (void)argc;
+    (void)argv;
+    return 1;
+}
+
+/* ---- break and continue ------------------------------------------------- */
+
+/* break [n] and continue [n] only set a count; the loops act on it (see
+ * loop_ends in exec.c). n bigger than the number of loops means all of
+ * them, and outside a loop there's nothing to do, as in dash. */
+static int loop_jump(struct shell *sh, int argc, char **argv, int *count)
+{
+    long n = 1;
+
+    if (argc > 2) {
+        fprintf(stderr, "acsh: %s: too many arguments\n", argv[0]);
+        return 1;
+    }
+    if (argc == 2 && (!parse_number(argv[1], &n) || n < 1)) {
+        fprintf(stderr, "acsh: %s: %s: loop count out of range\n", argv[0], argv[1]);
+        return 1;
+    }
+    if (sh->loop_depth == 0)
+        return 0;
+    *count = n > sh->loop_depth ? sh->loop_depth : (int)n;
+    return 0;
+}
+
+static int builtin_break(struct shell *sh, int argc, char **argv)
+{
+    return loop_jump(sh, argc, argv, &sh->breaks);
+}
+
+static int builtin_continue(struct shell *sh, int argc, char **argv)
+{
+    return loop_jump(sh, argc, argv, &sh->continues);
+}
+
+/* ---- read --------------------------------------------------------------- */
+
+/* A line as read builds it: each byte, and whether a backslash escaped it
+ * (an escaped byte never separates fields). */
+struct read_buf {
+    char *text;
+    bool *escaped;
+    size_t len;
+    size_t cap;
+};
+
+static void read_buf_add(struct read_buf *b, char c, bool escaped)
+{
+    if (b->len + 1 >= b->cap) {
+        b->cap = b->cap ? b->cap * 2 : 128;
+        b->text = xreallocarray(b->text, b->cap, 1);
+        b->escaped = xreallocarray(b->escaped, b->cap, sizeof *b->escaped);
+    }
+    b->text[b->len] = c;
+    b->escaped[b->len] = escaped;
+    b->len++;
+}
+
+/*
+ * Reads one line from stdin into b, one byte at a time like the shell, so
+ * the rest stays for the next command. Without -r, a backslash keeps the
+ * next byte from separating fields, and a backslash at the end of the line
+ * joins the next one. Returns 0 for a full line, 1 at the end of input
+ * (b holds whatever came before it), or 130 after Ctrl+C.
+ */
+static int read_line_into(struct shell *sh, struct read_buf *b, bool raw)
+{
+    char *line = NULL;
+    size_t cap = 0;
+    int status = 0;
+
+    for (;;) {
+        ssize_t n = input_read_line(STDIN_FILENO, &line, &cap, sh->interactive);
+        bool joined = false;
+
+        if (n < 0) {
+            if (errno == EINTR) {
+                sh->interrupted = true;
+                status = 130;
+            } else {
+                status = 1;
+            }
+            break;
+        }
+        for (ssize_t i = 0; i < n; i++) {
+            if (line[i] == '\n')
+                break;
+            if (!raw && line[i] == '\\') {
+                if (line[i + 1] == '\n') {
+                    joined = true;
+                    break;
+                }
+                if (i + 1 < n)
+                    read_buf_add(b, line[++i], true);
+                continue;
+            }
+            read_buf_add(b, line[i], false);
+        }
+        if (joined)
+            continue;
+        if (line[n - 1] != '\n')
+            status = 1; /* the input ended without a newline */
+        break;
+    }
+    free(line);
+    return status;
+}
+
+static bool in_ifs(const char *ifs, char c)
+{
+    return strchr(ifs, c) != NULL;
+}
+
+static bool is_ifs_space(const char *ifs, char c)
+{
+    return (c == ' ' || c == '\t' || c == '\n') && in_ifs(ifs, c);
+}
+
+/* Steps over one field separator at *pos: IFS spaces, at most one other
+ * IFS character, and IFS spaces again. */
+static void skip_separator(const struct read_buf *b, const char *ifs, size_t *pos)
+{
+    while (*pos < b->len && !b->escaped[*pos] && is_ifs_space(ifs, b->text[*pos]))
+        (*pos)++;
+    if (*pos < b->len && !b->escaped[*pos] && in_ifs(ifs, b->text[*pos]))
+        (*pos)++;
+    while (*pos < b->len && !b->escaped[*pos] && is_ifs_space(ifs, b->text[*pos]))
+        (*pos)++;
+}
+
+static bool is_separator(const struct read_buf *b, const char *ifs, size_t i)
+{
+    return !b->escaped[i] && in_ifs(ifs, b->text[i]);
+}
+
+/*
+ * Splits b over the names, POSIX style: each name but the last gets one
+ * field, and the last gets the rest of the line, without IFS spaces at
+ * either end. If that rest is a single field plus one separator, the
+ * separator goes too: with IFS=:, "a:b:" gives y=b but "a:b::" gives b::.
+ */
+static void assign_fields(struct shell *sh, const struct read_buf *b, char **names, int n)
+{
+    const char *ifs = vars_get(&sh->vars, "IFS");
+    size_t pos = 0;
+
+    if (ifs == NULL)
+        ifs = " \t\n";
+    for (int k = 0; k < n; k++) {
+        size_t start, end;
+        char *value;
+
+        while (pos < b->len && !b->escaped[pos] && is_ifs_space(ifs, b->text[pos]))
+            pos++;
+        start = pos;
+        if (k + 1 < n) {
+            while (pos < b->len && !is_separator(b, ifs, pos))
+                pos++;
+            end = pos;
+            skip_separator(b, ifs, &pos);
+        } else {
+            size_t q = start;
+
+            end = b->len;
+            while (end > start && !b->escaped[end - 1] && is_ifs_space(ifs, b->text[end - 1]))
+                end--;
+            while (q < end && !is_separator(b, ifs, q))
+                q++;
+            if (q < end) {
+                size_t after = q;
+
+                skip_separator(b, ifs, &after);
+                if (after >= end)
+                    end = q;
+            }
+        }
+        value = xstrndup(b->text ? b->text + start : "", end - start);
+        vars_set(&sh->vars, names[k], value);
+        free(value);
+    }
+}
+
+/* read [-r] [name ...]: one line from stdin into the names. With no name,
+ * the whole line goes into REPLY, as in bash. */
+static int builtin_read(struct shell *sh, int argc, char **argv)
+{
+    struct read_buf b = { 0 };
+    const char *reply = "REPLY";
+    bool raw = false;
+    int i = 1;
+    int status;
+
+    for (; i < argc && argv[i][0] == '-' && argv[i][1] != '\0'; i++) {
+        if (strcmp(argv[i], "--") == 0) {
+            i++;
+            break;
+        }
+        if (strcmp(argv[i], "-r") != 0) {
+            fprintf(stderr, "acsh: read: %s: invalid option\n", argv[i]);
+            return 2;
+        }
+        raw = true;
+    }
+    for (int k = i; k < argc; k++) {
+        if (!var_name_valid(argv[k])) {
+            fprintf(stderr, "acsh: read: %s: bad variable name\n", argv[k]);
+            return 2;
+        }
+    }
+    fflush(stdout); /* a prompt printed with echo -n shows before we wait */
+    status = read_line_into(sh, &b, raw);
+    if (status != 130) {
+        if (i < argc) {
+            assign_fields(sh, &b, argv + i, argc - i);
+        } else {
+            char *line = xstrndup(b.text ? b.text : "", b.len);
+
+            vars_set(&sh->vars, reply, line);
+            free(line);
+        }
+    }
+    free(b.text);
+    free(b.escaped);
+    return status;
+}
+
 /* ---- source and . -------------------------------------------------------- */
 
 /* A loop of files sourcing each other stops here instead of running out of
@@ -444,22 +688,34 @@ static int builtin_help(struct shell *sh, int argc, char **argv);
 static const struct builtin builtins[] = {
     { ".",      builtin_source, ". file [arg ...]",
       "Run the commands in file in this shell. The same as source.", true },
+    { ":",      builtin_true,   ": [arg ...]",
+      "Do nothing, successfully.", true },
+    { "break",  builtin_break,  "break [n]",
+      "Leave the loop, or n loops.", true },
     { "cd",     builtin_cd,     "cd [dir | -]",
       "Go to dir. With no dir, go home; with -, go back to the last folder.", false },
+    { "continue", builtin_continue, "continue [n]",
+      "Go on with the next round of the loop, or of the nth loop out.", true },
     { "echo",   builtin_echo,   "echo [-neE] [word ...]",
       "Print the words. -n: no newline at the end. -e: read \\n, \\t and other escapes.", false },
     { "exit",   builtin_exit,   "exit [n]",
       "Leave acsh with status n, or with the last command's status.", true },
     { "export", builtin_export, "export [name[=value] ...]",
       "Pass variables on to commands. With no names, list the ones passed on.", true },
+    { "false",  builtin_false,  "false",
+      "Fail: give status 1.", false },
     { "help",   builtin_help,   "help [name]",
       "List the built-ins, or show one.", false },
     { "pwd",    builtin_pwd,    "pwd",
       "Print the current folder.", false },
+    { "read",   builtin_read,   "read [-r] [name ...]",
+      "Read a line from stdin into the names, split on IFS. -r: keep backslashes.", false },
     { "shift",  builtin_shift,  "shift [n]",
       "Drop the first n arguments ($1 ...), 1 if n isn't given.", true },
     { "source", builtin_source, "source file [arg ...]",
       "Run the commands in file in this shell, with args as $1 ...", true },
+    { "true",   builtin_true,   "true",
+      "Succeed: give status 0.", false },
     { "unset",  builtin_unset,  "unset name ...",
       "Remove the variables.", true },
 };

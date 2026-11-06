@@ -17,6 +17,9 @@ struct shell {
     const char *name; /* $0: how acsh was started, or the script's name */
     struct strvec params; /* $1, $2, ...: the script's arguments */
     int source_depth; /* how many `source` calls are running, to stop a loop */
+    int loop_depth;   /* how many while, until and for loops are running */
+    int breaks;       /* break n: how many loops still have to end */
+    int continues;    /* continue n: the same, the last one goes on instead */
     struct vars vars;
 };
 

@@ -31,6 +31,11 @@ bool signals_wait_for_input(int fd);
  * stopped; it shouldn't also count as Ctrl+C at the next prompt. */
 void signals_drop_pending(void);
 
+/* True if Ctrl+C was pressed while the shell itself was busy, and forgets
+ * it. A loop of built-ins like `while :; do :; done` never waits for a
+ * child or for input, so it asks this on every round to stay stoppable. */
+bool signals_take_interrupt(void);
+
 /* In a child of an interactive shell, after fork: SIGINT and SIGQUIT back
  * to their defaults, and SIGINT unblocked. A blocked or ignored signal stays
  * that way across exec, so without this the command couldn't be stopped. A
