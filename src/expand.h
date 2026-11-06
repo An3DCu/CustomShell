@@ -14,7 +14,9 @@
  *   1. tilde        ~ and ~/x become $HOME, ~name becomes that user's home
  *   2. parameters   $X, ${X}, $?, $$, $0
  *   3. splitting    the result of an unquoted $X is cut into words on IFS
- *   4. quotes       removed; they only decided what 1 to 3 may touch
+ *   4. file names   a word with an unquoted *, ? or [...] becomes the
+ *                   names that match it, sorted (see pattern.h)
+ *   5. quotes       removed; they only decided what 1 to 4 may touch
  *
  * Everything works on the word as the lexer left it, quotes included, so
  * the text of a variable is never read as shell syntax: after X='a; b',
@@ -33,8 +35,9 @@
 bool expand_command(struct shell *sh, char *const *words, size_t nwords,
                     struct strvec *out, char *err, size_t errlen);
 
-/* Expands one word into one string, with no splitting: for redirection
- * targets, so `> $F` with F="a b" writes to the file "a b", as in dash.
+/* Expands one word into one string, with no splitting and no file names:
+ * for redirection targets, so `> $F` with F="a b" writes to the file "a b",
+ * and `> *.log` to a file called *.log, as in dash.
  * Returns a new string, or NULL with err set. */
 char *expand_one(struct shell *sh, const char *word, char *err, size_t errlen);
 

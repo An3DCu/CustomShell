@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "pattern.h"
 #include "vars.h"
 #include "xalloc.h"
 
@@ -16,8 +17,8 @@
  *   FROM_SPLIT   from an unquoted $X: split on IFS
  *   FROM_QUOTED  inside quotes, escaped, or from ~: left alone
  *
- * Pathname expansion (*, ?) will use the same marks: only FROM_WORD and
- * FROM_SPLIT characters can act as patterns.
+ * Pathname expansion uses the same marks: only FROM_WORD and FROM_SPLIT
+ * characters can act as *, ? or [, so "*" and \* stay a plain *.
  */
 enum origin {
     FROM_WORD,
@@ -220,7 +221,7 @@ static bool backquote_error(char *err, size_t errlen)
 }
 
 /*
- * Steps 1, 2 and 4 in one pass over the word: quotes and backslashes are
+ * Steps 1, 2 and 5 in one pass over the word: quotes and backslashes are
  * read and dropped, ~ and $ are replaced, and every byte that goes into b is
  * marked with where it came from. The quoting rules are POSIX's:
  *   'single'   everything inside is literal
@@ -286,6 +287,27 @@ static bool scan_word(const struct shell *sh, const char *w, struct xbuf *b,
     return true;
 }
 
+/* ---- step 4: pathname expansion ---------------------------------------- */
+
+/*
+ * One finished field, text[from, to). If it has an unquoted *, ? or [...]
+ * and some file names match, those go to out instead of the field. With no
+ * match the field stays as typed, like dash: `ls *.nope` passes "*.nope"
+ * on, and ls says it doesn't exist.
+ */
+static void add_field(const struct xbuf *b, size_t from, size_t to, struct strvec *out)
+{
+    size_t n = to - from;
+    unsigned char *active = xmalloc(n + 1);
+    struct pattern p = { .text = b->text ? b->text + from : "", .active = active, .len = n };
+
+    for (size_t i = 0; i < n; i++)
+        active[i] = b->origin[from + i] != FROM_QUOTED;
+    if (!pattern_has_magic(&p) || pattern_expand(&p, out) == 0)
+        strvec_push(out, xbuf_string(b, from, to));
+    free(active);
+}
+
 /* ---- step 3: field splitting -------------------------------------------- */
 
 static bool is_ifs(const char *ifs, char c)
@@ -338,7 +360,7 @@ static void split_fields(const struct shell *sh, const struct xbuf *b, struct st
                 i++;
             }
             if (hard || content)
-                strvec_push(out, xbuf_string(b, start, run));
+                add_field(b, start, run, out);
             start = i;
             content = false;
             continue;
@@ -349,7 +371,7 @@ static void split_fields(const struct shell *sh, const struct xbuf *b, struct st
     if (q < b->nquotes)
         content = true;
     if (content)
-        strvec_push(out, xbuf_string(b, start, b->len));
+        add_field(b, start, b->len, out);
 }
 
 /* ---- the public functions ----------------------------------------------- */
