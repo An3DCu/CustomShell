@@ -273,6 +273,6 @@ def test_prompt_follows_home(terminal, workdir):
     child = terminal(env={"HOME": "/"})
     child.expect(r"\$ ")
     child.sendline(f"HOME={workdir}")
-    child.expect(r":~\$ ")
+    child.expect(r" ~\r\nacsh\$ ")
     child.sendline("exit")
     child.expect(pexpect.EOF)

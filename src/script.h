@@ -18,6 +18,8 @@ struct reader {
     const char *text;   /* or from this string (acsh -c) */
     size_t pos;
     bool interactive;   /* prompts, and Ctrl+C drops the line being typed */
+    const char *name;   /* for errors: "build.sh: line 3"; NULL for stdin */
+    int lines;          /* how many lines it has given so far */
 };
 
 /*

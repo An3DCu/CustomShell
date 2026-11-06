@@ -45,6 +45,18 @@ static void test_home_with_trailing_slash(void)
     CHECK_FOLDER("/home/user/x", "/home/user//", "~/x");
 }
 
+/* Colors: on for a real terminal type, off for NO_COLOR, dumb or no TERM. */
+static void test_colors(void)
+{
+    CHECK(prompt_colors(NULL, "xterm-256color"));
+    CHECK(prompt_colors("", "xterm")); /* an empty NO_COLOR doesn't count */
+    CHECK(!prompt_colors("1", "xterm"));
+    CHECK(!prompt_colors("anything", "xterm"));
+    CHECK(!prompt_colors(NULL, "dumb"));
+    CHECK(!prompt_colors(NULL, NULL));
+    CHECK(!prompt_colors(NULL, ""));
+}
+
 static void test_missing_or_odd_home(void)
 {
     CHECK_FOLDER("/home/user", NULL, "/home/user");
@@ -60,5 +72,6 @@ int main(void)
     RUN(test_only_whole_folder_names_match);
     RUN(test_home_with_trailing_slash);
     RUN(test_missing_or_odd_home);
+    RUN(test_colors);
     return check_summary();
 }

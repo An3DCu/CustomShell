@@ -164,12 +164,12 @@ int main(int argc, char **argv)
 
     if (command != NULL) {
         /* acsh -c 'echo $0 $1' name one */
-        r = (struct reader){ .fd = -1, .text = command };
+        r = (struct reader){ .fd = -1, .text = command, .name = "-c" };
         if (i < argc)
-            sh.name = argv[i++];
+            sh.name = r.name = argv[i++]; /* bash names errors after it too */
     } else if (i < argc) {
         /* acsh script.sh one two: $0 is the script */
-        sh.name = argv[i++];
+        sh.name = r.name = argv[i++];
         r.fd = open_script(sh.name, &status);
         if (r.fd < 0)
             goto out;

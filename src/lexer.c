@@ -188,6 +188,21 @@ static bool all_digits(const char *s, size_t n)
     return n > 0;
 }
 
+/* Fills in each token's line, for error messages from scripts. */
+static void number_lines(const char *text, struct token_list *list)
+{
+    size_t at = 0;
+    int line = 0;
+
+    for (size_t i = 0; i < list->len; i++) {
+        for (; at < list->items[i].pos; at++) {
+            if (text[at] == '\n')
+                line++;
+        }
+        list->items[i].line = line;
+    }
+}
+
 enum lex_status lex(const char *line, struct token_list *out, char *err, size_t errlen)
 {
     size_t i = 0;
@@ -202,6 +217,7 @@ enum lex_status lex(const char *line, struct token_list *out, char *err, size_t 
         start = i;
         if (line[i] == '\0') {
             push(out, TOK_END, NULL, -1, start);
+            number_lines(line, out);
             return LEX_OK;
         }
         if (line[i] == '#') {

@@ -12,6 +12,7 @@
 #include <unistd.h>
 
 #include "builtins.h"
+#include "error.h"
 #include "expand.h"
 #include "explain.h"
 #include "redirect.h"
@@ -30,7 +31,7 @@ static bool expand_argv(struct shell *sh, const struct command *cmd, struct strv
     char err[256];
 
     if (!expand_command(sh, cmd->words, cmd->nwords, argv, err, sizeof err)) {
-        fprintf(stderr, "acsh: %s\n", err);
+        shell_error(sh, "%s", err);
         return false;
     }
     strvec_items(argv); /* so an empty argv is { NULL }, not NULL */
@@ -52,7 +53,7 @@ static bool apply_assignments(struct shell *sh, const struct command *cmd, bool 
         char *value = expand_assignment(sh, a + n + 1, err, sizeof err);
 
         if (value == NULL) {
-            fprintf(stderr, "acsh: %s\n", err);
+            shell_error(sh, "%s", err);
             free(name);
             return false;
         }
@@ -110,20 +111,43 @@ static void restore_assigned(struct shell *sh, struct saved_var *saved, size_t n
     free(saved);
 }
 
-/* Says why execvp failed, in the words bash uses. */
-static void report_exec_error(const char *name, int err)
+/* A hint for a command that wasn't found, if it looks like a mistake that
+ * is easy to make. */
+static void hint_not_found(const struct shell *sh, char *const *argv)
 {
     struct stat st;
 
+    /* X = 1: spaces around the = make X a command */
+    if (var_name_valid(argv[0]) && argv[1] != NULL && argv[1][0] == '=') {
+        const char *value = argv[1][1] != '\0' ? argv[1] + 1 : argv[2] ? argv[2] : "";
+
+        shell_hint(sh, "no spaces around = in an assignment: %s=%s", argv[0], value);
+        return;
+    }
+    /* build.sh, when it's right here: PATH doesn't include the current folder */
+    if (stat(argv[0], &st) == 0 && S_ISREG(st.st_mode))
+        shell_hint(sh, "it's in this folder; run it as ./%s", argv[0]);
+}
+
+/* Says why execvp failed, in the words bash uses. */
+static void report_exec_error(const struct shell *sh, char *const *argv, int err)
+{
+    const char *name = argv[0];
+    struct stat st;
+
     if (err == ENOENT && strchr(name, '/') == NULL) {
-        fprintf(stderr, "acsh: %s: command not found\n", name);
+        shell_error(sh, "%s: command not found", name);
+        hint_not_found(sh, argv);
         return;
     }
     /* exec gives EACCES for a folder too; say what it really is. */
     if (err == EACCES && strchr(name, '/') != NULL && stat(name, &st) == 0
         && S_ISDIR(st.st_mode))
         err = EISDIR;
-    fprintf(stderr, "acsh: %s: %s\n", name, strerror(err));
+    shell_error(sh, "%s: %s", name, strerror(err));
+    if (err == EACCES && stat(name, &st) == 0 && S_ISREG(st.st_mode)
+        && (st.st_mode & (S_IXUSR | S_IXGRP | S_IXOTH)) == 0)
+        shell_hint(sh, "it isn't executable; chmod +x %s, or run it with acsh %s", name, name);
 }
 
 int exit_status_from_wait(int wstatus)
@@ -153,7 +177,7 @@ static int wait_for(struct shell *sh, pid_t pid)
      * child got the same signal, so keep waiting for it. */
     while (waitpid(pid, &wstatus, 0) < 0) {
         if (errno != EINTR) {
-            fprintf(stderr, "acsh: waitpid: %s\n", strerror(errno));
+            shell_error(sh, "waitpid: %s", strerror(errno));
             return 1;
         }
     }
@@ -274,7 +298,7 @@ static int run_for(struct shell *sh, const struct command *cmd)
 
     if (cmd->has_in) {
         if (!expand_words(sh, cmd->words, cmd->nwords, &values, err, sizeof err)) {
-            fprintf(stderr, "acsh: %s\n", err);
+            shell_error(sh, "%s", err);
             strvec_free(&values);
             return 2;
         }
@@ -406,7 +430,7 @@ static _Noreturn void run_in_child(struct shell *sh, const struct command *cmd, 
     explain_exec(sh, argv);
     execvp(argv[0], argv);
     err = errno;
-    report_exec_error(argv[0], err);
+    report_exec_error(sh, argv, err);
     _exit(err == ENOENT ? 127 : 126);
 }
 
@@ -530,7 +554,7 @@ static int run_forked(struct shell *sh, const struct pipeline *pl, char **first_
         pid_t pid;
 
         if (i + 1 < n && pipe(fds) != 0) {
-            fprintf(stderr, "acsh: pipe: %s\n", strerror(errno));
+            shell_error(sh, "pipe: %s", strerror(errno));
             failed = true;
             break;
         }
@@ -544,7 +568,7 @@ static int run_forked(struct shell *sh, const struct pipeline *pl, char **first_
             report[0] = report[1] = -1;
         pid = fork();
         if (pid < 0) {
-            fprintf(stderr, "acsh: fork: %s\n", strerror(errno));
+            shell_error(sh, "fork: %s", strerror(errno));
             if (fds[0] >= 0) {
                 close(fds[0]);
                 close(fds[1]);
@@ -576,6 +600,7 @@ static int run_forked(struct shell *sh, const struct pipeline *pl, char **first_
                     close(fds[1]);
                 }
             }
+            sh->line = sh->unit_line + pl->commands[i].line;
             run_in_child(sh, &pl->commands[i], i == 0 ? first_argv : NULL);
         }
         pids[started++] = pid;
@@ -626,6 +651,7 @@ static int run_pipeline(struct shell *sh, const struct pipeline *pl)
     char **av;
     int status;
 
+    sh->line = sh->unit_line + cmd->line;
     if (pl->ncommands > 1)
         return run_forked(sh, pl, NULL);
     if (cmd->kind != CMD_SIMPLE)

@@ -9,6 +9,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "error.h"
 #include "vars.h"
 #include "xalloc.h"
 
@@ -23,7 +24,7 @@ bool explain_start(struct shell *sh)
         return true;
     fd = fcntl(STDERR_FILENO, F_DUPFD_CLOEXEC, 10);
     if (fd < 0) {
-        fprintf(stderr, "acsh: explain: %s\n", strerror(errno));
+        shell_error(sh, "explain: %s", strerror(errno));
         return false;
     }
     sh->explain_fd = fd;

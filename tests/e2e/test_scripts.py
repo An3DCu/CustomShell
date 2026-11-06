@@ -108,7 +108,7 @@ def test_script_ending_inside_a_quote(acsh, workdir):
     write(workdir / "bad.sh", "echo line1\necho \"a\n")
     result = subprocess.run([acsh, "bad.sh"], capture_output=True, text=True, cwd=workdir)
     assert result.stdout == "line1\n"
-    assert result.stderr == "acsh: unclosed double quote\n"
+    assert result.stderr == "acsh: bad.sh: line 2: unclosed double quote\n"
     assert result.returncode == 2
 
 
@@ -217,7 +217,7 @@ def test_source_errors(run, workdir):
 def test_source_loop_stops(run, workdir):
     write(workdir / "loop.sh", "source ./loop.sh\n")
     result = run(stdin="source ./loop.sh\necho survived $?\n")
-    assert "acsh: source: ./loop.sh: sourced too deeply (a loop?)\n" in result.stderr
+    assert "source: ./loop.sh: sourced too deeply (a loop?)\n" in result.stderr
     assert result.stdout == "survived 1\n"
 
 
@@ -233,10 +233,10 @@ def test_syntax_error_in_a_sourced_file(run, workdir):
 def test_shift_errors(run):
     result = run("-c", "shift 5; echo $?; shift x; echo $?; shift 1 2; echo $?; shift; echo $1",
                  "n", "a", "b")
-    assert result.stderr == (
-        "acsh: shift: can't shift that many\n"
-        "acsh: shift: x: numeric argument required\n"
-        "acsh: shift: too many arguments\n"
+    assert result.stderr == (  # -c with a name: errors say where, like bash
+        "acsh: n: line 1: shift: can't shift that many\n"
+        "acsh: n: line 1: shift: x: numeric argument required\n"
+        "acsh: n: line 1: shift: too many arguments\n"
     )
     assert result.stdout == "1\n1\n1\nb\n"
 
