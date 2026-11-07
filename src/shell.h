@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <sys/types.h>
+#include <termios.h>
 
 #include "strvec.h"
 #include "vars.h"
@@ -27,6 +28,11 @@ struct shell {
     const char *where; /* the script running now, for errors; NULL at the prompt or from a pipe */
     int line;         /* the line in it of the command running now */
     int unit_line;    /* the line where the command being run starts; commands count from it */
+    bool job_control; /* interactive, on a terminal: pipelines get process groups (jobs.h) */
+    pid_t pgid;       /* the shell's own process group */
+    int tty_fd;       /* the shell's copy of the terminal, at 10 or above */
+    struct termios tty_modes; /* the terminal as the shell wants it, to put back after a job */
+    bool have_tty_modes;
     struct vars vars;
 };
 

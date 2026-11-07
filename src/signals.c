@@ -91,5 +91,8 @@ void signals_reset_in_child(void)
 {
     set_handler(SIGINT, SIG_DFL);
     set_handler(SIGQUIT, SIG_DFL);
+    set_handler(SIGTSTP, SIG_DFL);
+    set_handler(SIGTTIN, SIG_DFL);
+    set_handler(SIGTTOU, SIG_DFL);
     change_sigint_mask(SIG_UNBLOCK);
 }
