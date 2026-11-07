@@ -36,8 +36,9 @@ void signals_drop_pending(void);
  * child or for input, so it asks this on every round to stay stoppable. */
 bool signals_take_interrupt(void);
 
-/* In a child of an interactive shell, after fork: SIGINT and SIGQUIT back
- * to their defaults, and SIGINT unblocked. A blocked or ignored signal stays
+/* In a child of an interactive shell, after fork: SIGINT, SIGQUIT and the
+ * job control signals (SIGTSTP, SIGTTIN, SIGTTOU) back to their defaults,
+ * and SIGINT unblocked. A blocked or ignored signal stays
  * that way across exec, so without this the command couldn't be stopped. A
  * script doesn't call this: signals that were already ignored when it
  * started (under nohup, say) stay ignored for its commands, as POSIX says. */

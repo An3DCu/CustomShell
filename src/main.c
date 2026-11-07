@@ -13,6 +13,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "jobs.h"
 #include "script.h"
 #include "shell.h"
 #include "signals.h"
@@ -182,8 +183,10 @@ int main(int argc, char **argv)
         strvec_push(&sh.params, xstrdup(argv[i]));
 
     r.interactive = sh.interactive;
-    if (sh.interactive)
+    if (sh.interactive) {
+        jobs_init(&sh); /* first: it may have to wait to be in front */
         signals_init_interactive();
+    }
     status = script_run(&sh, &r);
     if (r.fd > STDIN_FILENO)
         close(r.fd);

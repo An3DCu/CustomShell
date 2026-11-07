@@ -2,6 +2,6 @@
 #define ACSH_VERSION_H
 
 /* Bumped when a version is tagged. "-dev" between tags. */
-#define ACSH_VERSION "0.2.0"
+#define ACSH_VERSION "0.3.0-dev"
 
 #endif

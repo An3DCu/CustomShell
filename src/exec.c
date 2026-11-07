@@ -15,6 +15,7 @@
 #include "error.h"
 #include "expand.h"
 #include "explain.h"
+#include "jobs.h"
 #include "redirect.h"
 #include "signals.h"
 #include "strvec.h"
@@ -169,17 +170,28 @@ int exit_status_from_wait(int wstatus)
     return 1;
 }
 
-static int wait_for(struct shell *sh, pid_t pid)
+static int wait_for(struct shell *sh, pid_t pid, pid_t pgid)
 {
+    /* With job control, waitpid also says when the job is stopped. */
+    int flags = sh->job_control ? WUNTRACED : 0;
     int wstatus;
 
-    /* Ctrl+C reaches the shell too and interrupts waitpid with EINTR. The
-     * child got the same signal, so keep waiting for it. */
-    while (waitpid(pid, &wstatus, 0) < 0) {
-        if (errno != EINTR) {
+    for (;;) {
+        /* A signal can interrupt waitpid with EINTR; the child is still
+         * there, so keep waiting for it. */
+        if (waitpid(pid, &wstatus, flags) < 0) {
+            if (errno == EINTR)
+                continue;
             shell_error(sh, "waitpid: %s", strerror(errno));
             return 1;
         }
+        if (!WIFSTOPPED(wstatus))
+            break;
+        /* Ctrl+Z stopped it. Jobs that stay stopped come later; until then
+         * the job just goes on, so the shell never waits for it forever. */
+        explain_event(sh, "Ctrl+Z: for now the job goes on", "waitpid(%ld) = stopped by signal %d",
+                      (long)pid, WSTOPSIG(wstatus));
+        kill(-pgid, SIGCONT);
     }
     if (WIFSIGNALED(wstatus) && WTERMSIG(wstatus) == SIGINT)
         sh->interrupted = true;
@@ -544,6 +556,7 @@ static int run_forked(struct shell *sh, const struct pipeline *pl, char **first_
     size_t started = 0;
     pid_t *pids = xcalloc(n, sizeof *pids);
     int prev_read = -1; /* read end of the pipe from the previous command */
+    pid_t pgid = 0;     /* the pipeline's process group: the first child's pid */
     int status = 0;
     bool failed = false;
 
@@ -581,12 +594,16 @@ static int run_forked(struct shell *sh, const struct pipeline *pl, char **first_
             break;
         }
         if (pid == 0) {
-            if (sh->interactive)
-                signals_reset_in_child();
             if (report[1] >= 0) {
                 close(report[0]);
                 sh->explain_out = report[1];
             }
+            /* The group and the terminal first, while SIGTTOU is still
+             * ignored as in the shell; then the signals go back to their
+             * defaults, so Ctrl+C and Ctrl+Z work on the command. */
+            jobs_join_group(sh, pgid, true);
+            if (sh->interactive)
+                signals_reset_in_child();
             if (prev_read >= 0 && prev_read != STDIN_FILENO) {
                 explain_event(sh, "stdin comes from the pipe", "dup2(%d, 0)", prev_read);
                 dup2(prev_read, STDIN_FILENO);
@@ -611,6 +628,11 @@ static int run_forked(struct shell *sh, const struct pipeline *pl, char **first_
                      command_name(&pl->commands[i], i == 0 ? first_argv : NULL));
             explain_event(sh, note, "fork() = %ld", (long)pid);
         }
+        if (pgid == 0)
+            pgid = pid;
+        jobs_set_group(sh, pid, pgid);
+        if (i == 0)
+            jobs_give_terminal(sh, pgid);
         if (report[0] >= 0) {
             close(report[1]);
             relay_report(sh, report[0]);
@@ -634,11 +656,13 @@ static int run_forked(struct shell *sh, const struct pipeline *pl, char **first_
     /* Wait for all of them, so none is left as a zombie. The pipeline's
      * status is the last command's, as in POSIX sh without pipefail. */
     for (size_t i = 0; i < started; i++) {
-        int s = wait_for(sh, pids[i]);
+        int s = wait_for(sh, pids[i], pgid);
 
         if (i == n - 1)
             status = s;
     }
+    if (pgid != 0)
+        jobs_take_terminal(sh);
     free(pids);
     return failed ? 1 : status;
 }
