@@ -75,17 +75,6 @@ def test_terminal_modes_come_back_after_a_command(prompt):
     prompt.expect_exact("echo visible\r\nvisible\r\n")
 
 
-def test_ctrl_z_does_not_leave_the_shell_waiting(prompt):
-    # Stopped jobs come with #33. Until then a job that gets Ctrl+Z goes on,
-    # and the prompt comes back when it ends.
-    prompt.sendline("sleep 1; echo slept")
-    prompt.expect_exact("echo slept\r\n")
-    time.sleep(0.3)
-    prompt.sendcontrol("z")
-    prompt.expect("slept", timeout=5)
-    prompt.expect(r"acsh\$ ")
-
-
 def test_explain_shows_the_group_and_the_terminal(prompt):
     prompt.sendline("explain true | cat")
     # the shell's own lines come first; the child's are copied in after them

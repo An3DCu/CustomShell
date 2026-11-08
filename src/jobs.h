@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <sys/types.h>
+#include <termios.h>
 
 #include "shell.h"
 
@@ -79,26 +80,52 @@ struct job {
     size_t nended;
     char *text;         /* the command as typed, on one line */
     enum job_state state;
+    unsigned long turn; /* when it last stopped or went to the background */
+    bool tell_stop;     /* stopped in the background: say so before the prompt */
+    struct termios modes; /* the terminal as the job left it when it stopped */
+    bool have_modes;
 };
 
 /* Adds a job for pids (the job takes over the array). In an interactive
  * shell it says `job 1 started: sleep 30 (pid 4211)`. Returns its number. */
 int jobs_add(struct shell *sh, pid_t pgid, pid_t *pids, size_t npids, const char *text);
 
+/*
+ * Waits for a pipeline the shell just started in front, in group pgid,
+ * until it ends or Ctrl+Z stops it, and takes the terminal back. Takes
+ * over pids. A stopped pipeline becomes a job, `job 2 stopped: vim
+ * notes.txt`, and sh->stopped is set, so the rest of the line is skipped.
+ * Returns the last command's status, or 0 after a stop.
+ */
+int jobs_run_in_front(struct shell *sh, pid_t pgid, pid_t *pids, size_t npids,
+                      const char *text);
+
+/* `fg`: prints the job's text and runs it in front again, with the
+ * terminal modes it stopped with, as jobs_run_in_front does. */
+int jobs_fg(struct shell *sh, struct job *job);
+
+/* `bg`: lets a stopped job go on in the background, `job 1 running: ...`. */
+int jobs_bg(struct shell *sh, struct job *job);
+
 /* Collects every child that ended or stopped since the last call, without
  * waiting. */
 void jobs_reap(struct shell *sh);
 
 /* In an interactive shell: `job 1 done: sleep 30 (exit 0)` for each job
- * that ended, and takes it off the list. */
+ * that ended, and takes it off the list, and `job 1 stopped: cat` for one
+ * that stopped in the background. */
 void jobs_notify(struct shell *sh);
 
 /* `jobs`: one line per job. Finished ones are shown once more, then
  * forgotten. */
 void jobs_list(struct shell *sh);
 
-/* The job that spec names: %n, %% or %+ for the newest, %- for the one
- * before it. NULL, with a reason in err, if there's none. */
+/*
+ * The job that spec names: %n, or %% and %+ for the current job, %- for
+ * the one before it. The current job is, as in bash, the one that stopped
+ * last, or if none is stopped, the one last sent to the background. NULL,
+ * with a reason in err, if there's none.
+ */
 struct job *jobs_find(struct shell *sh, const char *spec, char *err, size_t errlen);
 
 /* The job that has pid in it, or NULL. */

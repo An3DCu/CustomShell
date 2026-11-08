@@ -209,12 +209,19 @@ def test_ctrl_c_doesnt_reach_a_job(prompt):
 
 def test_a_job_that_reads_the_terminal_stops(prompt):
     # Only the group in front may read the terminal; a job that tries gets
-    # SIGTTIN and stops. Ctrl+Z and fg come with #33.
+    # SIGTTIN and stops. In front again, after fg, it can read.
     prompt.sendline("cat &")
     prompt.expect("job 1 started")
     time.sleep(0.3)
     prompt.sendline("jobs")
     prompt.expect_exact("job 1  stopped  cat")
+    prompt.expect_exact("job 1 stopped: cat")  # the notice before the prompt
+    prompt.sendline("fg")
+    prompt.expect_exact("fg\r\ncat\r\n")
+    prompt.sendline("typed")
+    prompt.expect_exact("typed\r\ntyped\r\n")  # the echo, then cat's output
+    prompt.sendcontrol("d")
+    prompt.expect(r"acsh\$ ")
 
 
 def test_no_zombies_at_the_prompt(prompt):

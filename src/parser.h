@@ -109,6 +109,7 @@ struct pipeline {
     size_t ncommands;
     bool negate;          /* ! in front: 0 becomes 1, anything else 0 */
     enum run_if run_if;
+    char *text;           /* as typed, without && or &: what `jobs` shows */
 };
 
 /* a && b || c, or with & after it, the same in the background */
@@ -116,7 +117,6 @@ struct and_or {
     struct pipeline *pipelines;
     size_t npipelines;
     bool background;      /* ended with &: runs as a job, the shell doesn't wait */
-    char *text;           /* as typed, without the &: what `jobs` shows */
 };
 
 /* a; b, or a and b on two lines */

@@ -119,8 +119,9 @@ def in_front():
                 except OSError:
                     continue  # it ended meanwhile
                 comm = text[text.index("(") + 1 : text.rindex(")")]
-                pgrp = int(text[text.rindex(")") + 2 :].split()[2])
-                if comm == name and pgrp == group:
+                state, _, pgrp = text[text.rindex(")") + 2 :].split()[:3]
+                # not T: after fg it has the terminal a moment before SIGCONT
+                if comm == name and int(pgrp) == group and state != "T":
                     return
             time.sleep(0.01)
         raise AssertionError(f"{name} never ran in front")

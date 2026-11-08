@@ -141,12 +141,14 @@ static char *one_line(const char *text)
     return out;
 }
 
-int jobs_add(struct shell *sh, pid_t pgid, pid_t *pids, size_t npids, const char *text)
+/* A new entry at the end of the table, numbered one more than the highest
+ * in use, as in bash. */
+static struct job *new_job(struct shell *sh, pid_t pgid, pid_t *pids, size_t npids,
+                           const char *text)
 {
     struct job *job;
     int id = 1;
 
-    /* One more than the highest number in use, as in bash. */
     for (size_t i = 0; i < sh->njobs; i++) {
         if (sh->jobs[i].id >= id)
             id = sh->jobs[i].id + 1;
@@ -166,10 +168,19 @@ int jobs_add(struct shell *sh, pid_t pgid, pid_t *pids, size_t npids, const char
         .text = one_line(text),
         .state = JOB_RUNNING,
     };
-    explain_event(sh, "in the background: the shell doesn't wait for it", "job %d", id);
+    return job;
+}
+
+int jobs_add(struct shell *sh, pid_t pgid, pid_t *pids, size_t npids, const char *text)
+{
+    struct job *job = new_job(sh, pgid, pids, npids, text);
+
+    job->turn = ++sh->job_turns;
+    explain_event(sh, "in the background: the shell doesn't wait for it", "job %d", job->id);
     if (sh->interactive)
-        fprintf(stderr, "job %d started: %s (pid %ld)\n", id, job->text, (long)pids[npids - 1]);
-    return id;
+        fprintf(stderr, "job %d started: %s (pid %ld)\n", job->id, job->text,
+                (long)pids[npids - 1]);
+    return job->id;
 }
 
 static void job_free(struct job *job)
@@ -211,9 +222,15 @@ static void record(struct shell *sh, pid_t pid, int wstatus)
         if (job->pids[k] != pid)
             continue;
         if (WIFSTOPPED(wstatus)) {
+            if (job->state == JOB_RUNNING) {
+                /* in the background, as one in front is waited for apart */
+                job->turn = ++sh->job_turns;
+                job->tell_stop = true;
+            }
             job->state = JOB_STOPPED;
         } else if (WIFCONTINUED(wstatus)) {
             job->state = JOB_RUNNING;
+            job->tell_stop = false;
         } else if (!job->ended[k]) {
             job->ended[k] = true;
             job->wstatus[k] = wstatus;
@@ -250,6 +267,10 @@ void jobs_notify(struct shell *sh)
         struct job *job = &sh->jobs[i];
         char end[64];
 
+        if (job->state == JOB_STOPPED && job->tell_stop) {
+            job->tell_stop = false;
+            fprintf(stderr, "job %d stopped: %s\n", job->id, job->text);
+        }
         if (job->state != JOB_DONE) {
             i++;
             continue;
@@ -281,17 +302,47 @@ void jobs_list(struct shell *sh)
     }
 }
 
+/* Whether a should be the current job before b: a stopped job first, then
+ * the one that stopped or went to the background last. */
+static bool comes_before(const struct job *a, const struct job *b)
+{
+    bool a_stopped = a->state == JOB_STOPPED;
+    bool b_stopped = b->state == JOB_STOPPED;
+
+    if (a_stopped != b_stopped)
+        return a_stopped;
+    return a->turn > b->turn;
+}
+
+/* The current job, leaving out skip: %+, or with skip = %+, %-. */
+static struct job *current(struct shell *sh, const struct job *skip)
+{
+    struct job *best = NULL;
+
+    for (size_t i = 0; i < sh->njobs; i++) {
+        struct job *job = &sh->jobs[i];
+
+        if (job != skip && (best == NULL || comes_before(job, best)))
+            best = job;
+    }
+    return best;
+}
+
 struct job *jobs_find(struct shell *sh, const char *spec, char *err, size_t errlen)
 {
     char *end;
     long n;
 
     if (strcmp(spec, "%%") == 0 || strcmp(spec, "%+") == 0) {
-        if (sh->njobs > 0)
-            return &sh->jobs[sh->njobs - 1];
+        struct job *job = current(sh, NULL);
+
+        if (job != NULL)
+            return job;
     } else if (strcmp(spec, "%-") == 0) {
-        if (sh->njobs > 1)
-            return &sh->jobs[sh->njobs - 2];
+        struct job *job = current(sh, current(sh, NULL));
+
+        if (job != NULL)
+            return job;
     } else {
         if (spec[0] != '%' || spec[1] == '\0') {
             snprintf(err, errlen, "%s: not a job (jobs are %%1, %%2, ...)", spec);
@@ -390,6 +441,172 @@ int jobs_wait_all(struct shell *sh)
             return 130;
         }
     }
+    return 0;
+}
+
+/* ---- in front: fg, bg and Ctrl+Z ---------------------------------------- */
+
+/* The status for wstatus without printing anything: 128 + N for signal N. */
+static int quiet_status(int wstatus)
+{
+    if (WIFSIGNALED(wstatus))
+        return 128 + WTERMSIG(wstatus);
+    return WIFEXITED(wstatus) ? WEXITSTATUS(wstatus) : 1;
+}
+
+static void explain_end(struct shell *sh, pid_t pid, int wstatus)
+{
+    if (!explain_on(sh))
+        return;
+    if (WIFEXITED(wstatus))
+        explain_event(sh, NULL, "waitpid(%ld) = exit %d", (long)pid, WEXITSTATUS(wstatus));
+    else if (WIFSIGNALED(wstatus))
+        explain_event(sh, strsignal(WTERMSIG(wstatus)), "waitpid(%ld) = killed by signal %d",
+                      (long)pid, WTERMSIG(wstatus));
+}
+
+/*
+ * Waits for each process of the job in front, in pipeline order, so explain
+ * shows them in that order. True once all have ended, with the last one's
+ * status in *status; false as soon as one stops, since Ctrl+Z goes to the
+ * whole group and the others stop too. Without job control nothing stops
+ * on its own: a script and its commands share one group and stop together.
+ */
+static bool wait_in_front(struct shell *sh, struct job *job, int *status)
+{
+    int flags = sh->job_control ? WUNTRACED : 0;
+    size_t last = job->npids - 1;
+
+    *status = job->ended[last] ? quiet_status(job->wstatus[last]) : 0;
+    for (size_t k = 0; k < job->npids; k++) {
+        pid_t pid = job->pids[k];
+        int wstatus;
+        int s;
+
+        if (job->ended[k])
+            continue;
+        /* A signal can interrupt waitpid with EINTR; the child is still
+         * there, so keep waiting for it. */
+        while (waitpid(pid, &wstatus, flags) < 0) {
+            if (errno == EINTR)
+                continue;
+            shell_error(sh, "waitpid: %s", strerror(errno));
+            job->ended[k] = true;
+            job->nended++;
+            if (k == last)
+                *status = 1;
+            break;
+        }
+        if (job->ended[k])
+            continue;
+        if (WIFSTOPPED(wstatus)) {
+            explain_event(sh, "Ctrl+Z: the job stops", "waitpid(%ld) = stopped by signal %d",
+                          (long)pid, WSTOPSIG(wstatus));
+            return false;
+        }
+        job->ended[k] = true;
+        job->wstatus[k] = wstatus;
+        job->nended++;
+        if (WIFSIGNALED(wstatus) && WTERMSIG(wstatus) == SIGINT)
+            sh->interrupted = true;
+        explain_end(sh, pid, wstatus);
+        s = exit_status_from_wait(wstatus);
+        if (k == last)
+            *status = s;
+    }
+    job->state = JOB_DONE;
+    return true;
+}
+
+/* The job in front has ended or stopped: the shell takes the terminal back.
+ * A stopped job keeps its terminal modes, so a stopped editor comes back
+ * as it was, and the shell gets its own back. */
+static int leave_front(struct shell *sh, struct job *job, bool ended, int status)
+{
+    if (ended) {
+        jobs_take_terminal(sh);
+        remove_job(sh, job);
+        return status;
+    }
+    job->have_modes = tcgetattr(sh->tty_fd, &job->modes) == 0;
+    jobs_take_terminal(sh);
+    job->state = JOB_STOPPED;
+    job->turn = ++sh->job_turns;
+    job->tell_stop = false;
+    /* The terminal shows ^Z but no newline. */
+    fprintf(stderr, "\njob %d stopped: %s\n", job->id, job->text);
+    sh->stopped = true;
+    return 0;
+}
+
+int jobs_run_in_front(struct shell *sh, pid_t pgid, pid_t *pids, size_t npids,
+                      const char *text)
+{
+    /* It's in the table from the start, so a stop only has to keep it
+     * there. Nothing else adds jobs while it runs. */
+    struct job *job = new_job(sh, pgid, pids, npids, text);
+    int status;
+    bool ended = wait_in_front(sh, job, &status);
+
+    return leave_front(sh, job, ended, status);
+}
+
+/* fg or bg on a job that ended but wasn't reported: report it now. */
+static int report_done(struct shell *sh, struct job *job)
+{
+    char end[64];
+    int status = quiet_status(job->wstatus[job->npids - 1]);
+
+    describe_end(job->wstatus[job->npids - 1], end, sizeof end);
+    fprintf(stderr, "job %d done: %s %s\n", job->id, job->text, end);
+    remove_job(sh, job);
+    return status;
+}
+
+/* Sends SIGCONT to the whole group: every process of a stopped pipeline
+ * goes on. */
+static void resume(struct shell *sh, struct job *job)
+{
+    explain_event(sh, "the job goes on", "kill(%ld, SIGCONT)", (long)-job->pgid);
+    kill(-job->pgid, SIGCONT);
+    job->state = JOB_RUNNING;
+    job->tell_stop = false;
+}
+
+int jobs_fg(struct shell *sh, struct job *job)
+{
+    int status;
+    bool ended;
+
+    jobs_reap(sh);
+    if (job->state == JOB_DONE)
+        return report_done(sh, job);
+    printf("%s\n", job->text);
+    fflush(stdout);
+    if (job->have_modes) {
+        explain_event(sh, "the terminal as the job left it", "tcsetattr(%d)", sh->tty_fd);
+        tcsetattr(sh->tty_fd, TCSADRAIN, &job->modes);
+    }
+    jobs_give_terminal(sh, job->pgid);
+    if (job->state == JOB_STOPPED)
+        resume(sh, job);
+    ended = wait_in_front(sh, job, &status);
+    return leave_front(sh, job, ended, status);
+}
+
+int jobs_bg(struct shell *sh, struct job *job)
+{
+    jobs_reap(sh);
+    if (job->state == JOB_DONE)
+        return report_done(sh, job);
+    if (job->state == JOB_RUNNING) {
+        shell_error(sh, "bg: job %d is already running", job->id);
+        return 0;
+    }
+    /* the notice first, so it comes before anything the job prints */
+    fprintf(stderr, "job %d running: %s\n", job->id, job->text);
+    job->turn = ++sh->job_turns;
+    resume(sh, job);
     return 0;
 }
 
