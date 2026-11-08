@@ -13,6 +13,7 @@
  * last, so looking one token ahead of anything else is safe. */
 struct parser {
     const struct token_list *tokens;
+    const char *text; /* what was lexed, for the text of a background job */
     size_t pos;
     char *err;
     size_t errlen;
@@ -21,6 +22,19 @@ struct parser {
 static const struct token *peek(const struct parser *p)
 {
     return &p->tokens->items[p->pos];
+}
+
+/* The n bytes at s without blanks and newlines at either end, as a new
+ * string. */
+static char *trimmed(const char *s, size_t n)
+{
+    while (n > 0 && (*s == ' ' || *s == '\t' || *s == '\n')) {
+        s++;
+        n--;
+    }
+    while (n > 0 && (s[n - 1] == ' ' || s[n - 1] == '\t' || s[n - 1] == '\n'))
+        n--;
+    return xstrndup(s, n);
 }
 
 static void skip_newlines(struct parser *p)
@@ -51,7 +65,6 @@ static bool ends_list(const struct token *tok)
 static enum parse_status unexpected(struct parser *p, const struct token *tok)
 {
     switch (tok->type) {
-    case TOK_AMP:
     case TOK_LPAREN:
         snprintf(p->err, p->errlen, "'%s' isn't supported yet", token_spelling(tok));
         break;
@@ -381,17 +394,35 @@ static enum parse_status parse_list(struct parser *p, struct list *list, const c
         if (ends_list(tok))
             return closer ? PARSE_OK : unexpected(p, tok);
 
+        struct and_or *ao;
+        size_t start = tok->pos;
+
         list->items = xreallocarray(list->items, list->nitems + 1, sizeof *list->items);
-        list->items[list->nitems] = (struct and_or){ 0 };
-        status = parse_and_or(p, &list->items[list->nitems++]);
+        ao = &list->items[list->nitems++];
+        *ao = (struct and_or){ 0 };
+        status = parse_and_or(p, ao);
         if (status != PARSE_OK)
             return status;
 
+        /* The text ends where its last token ends (always a word: a
+         * command, an argument, a redirection's target or fi/done), so a
+         * comment after it isn't part of it. */
+        tok = &p->tokens->items[p->pos - 1];
+        ao->text = trimmed(p->text + start, tok->pos + strlen(token_spelling(tok)) - start);
         tok = peek(p);
-        if (tok->type == TOK_SEMI)
+        if (tok->type == TOK_AMP) {
+            if (ao->npipelines > 1 || ao->pipelines[0].negate) {
+                snprintf(p->err, p->errlen,
+                         "only a single pipeline can run in the background (for now)");
+                return PARSE_SYNTAX;
+            }
+            ao->background = true;
             p->pos++;
-        else if (tok->type != TOK_NEWLINE && tok->type != TOK_END && !ends_list(tok))
+        } else if (tok->type == TOK_SEMI) {
+            p->pos++;
+        } else if (tok->type != TOK_NEWLINE && tok->type != TOK_END && !ends_list(tok)) {
             return unexpected(p, tok);
+        }
         skip_newlines(p);
     }
 }
@@ -400,7 +431,7 @@ enum parse_status parse_program(const char *text, struct list **out,
                                 char *err, size_t errlen)
 {
     struct token_list tokens;
-    struct parser p = { .tokens = &tokens, .err = err, .errlen = errlen };
+    struct parser p = { .tokens = &tokens, .text = text, .err = err, .errlen = errlen };
     struct list *list;
     enum parse_status status;
 
@@ -467,6 +498,7 @@ void list_free(struct list *list)
             free(pl->commands);
         }
         free(ao->pipelines);
+        free(ao->text);
     }
     free(list->items);
     free(list);

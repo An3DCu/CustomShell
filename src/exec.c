@@ -550,7 +550,36 @@ static void relay_report(struct shell *sh, int fd)
     }
 }
 
-static int run_forked(struct shell *sh, const struct pipeline *pl, char **first_argv)
+/*
+ * In a child that runs in the background without job control (a script):
+ * as POSIX says, stdin is /dev/null, so `cat &` can't take the script's
+ * input, and Ctrl+C and Ctrl+\ are ignored, so they only stop what's in
+ * front. With job control, the job's own process group does both.
+ */
+static void background_child_setup(struct shell *sh, bool first)
+{
+    struct sigaction ignore = { 0 };
+    int fd;
+
+    if (sh->job_control)
+        return;
+    ignore.sa_handler = SIG_IGN;
+    sigemptyset(&ignore.sa_mask);
+    sigaction(SIGINT, &ignore, NULL);
+    sigaction(SIGQUIT, &ignore, NULL);
+    if (!first)
+        return; /* the others read from the pipe before them */
+    fd = open("/dev/null", O_RDONLY);
+    if (fd >= 0 && fd != STDIN_FILENO) {
+        dup2(fd, STDIN_FILENO);
+        close(fd);
+    }
+}
+
+/* bg_text is the job's text when the pipeline runs in the background (cmd &),
+ * or NULL to run it in front and wait. */
+static int run_forked(struct shell *sh, const struct pipeline *pl, char **first_argv,
+                      const char *bg_text)
 {
     size_t n = pl->ncommands;
     size_t started = 0;
@@ -601,9 +630,11 @@ static int run_forked(struct shell *sh, const struct pipeline *pl, char **first_
             /* The group and the terminal first, while SIGTTOU is still
              * ignored as in the shell; then the signals go back to their
              * defaults, so Ctrl+C and Ctrl+Z work on the command. */
-            jobs_join_group(sh, pgid, true);
+            jobs_join_group(sh, pgid, bg_text == NULL);
             if (sh->interactive)
                 signals_reset_in_child();
+            if (bg_text != NULL)
+                background_child_setup(sh, i == 0);
             if (prev_read >= 0 && prev_read != STDIN_FILENO) {
                 explain_event(sh, "stdin comes from the pipe", "dup2(%d, 0)", prev_read);
                 dup2(prev_read, STDIN_FILENO);
@@ -631,7 +662,7 @@ static int run_forked(struct shell *sh, const struct pipeline *pl, char **first_
         if (pgid == 0)
             pgid = pid;
         jobs_set_group(sh, pid, pgid);
-        if (i == 0)
+        if (i == 0 && bg_text == NULL)
             jobs_give_terminal(sh, pgid);
         if (report[0] >= 0) {
             close(report[1]);
@@ -651,6 +682,13 @@ static int run_forked(struct shell *sh, const struct pipeline *pl, char **first_
     if (prev_read >= 0) {
         explain_event(sh, "the shell lets go of its end", "close(%d)", prev_read);
         close(prev_read);
+    }
+
+    if (bg_text != NULL && started > 0) {
+        /* In the background: the job takes the pids, and jobs_reap
+         * collects them later, so none is left as a zombie. */
+        jobs_add(sh, sh->job_control ? pgid : 0, pids, started, bg_text);
+        return failed ? 1 : 0;
     }
 
     /* Wait for all of them, so none is left as a zombie. The pipeline's
@@ -677,7 +715,7 @@ static int run_pipeline(struct shell *sh, const struct pipeline *pl)
 
     sh->line = sh->unit_line + cmd->line;
     if (pl->ncommands > 1)
-        return run_forked(sh, pl, NULL);
+        return run_forked(sh, pl, NULL, NULL);
     if (cmd->kind != CMD_SIMPLE)
         return run_compound_here(sh, cmd);
 
@@ -693,7 +731,7 @@ static int run_pipeline(struct shell *sh, const struct pipeline *pl)
     if (b != NULL || av[0] == NULL)
         status = run_in_shell(sh, cmd, b, av);
     else
-        status = run_forked(sh, pl, av);
+        status = run_forked(sh, pl, av, NULL);
     strvec_free(&argv);
     return status;
 }
@@ -709,26 +747,41 @@ static bool should_run(const struct pipeline *pl, int status)
     return true;
 }
 
+/* a && b || c: each pipeline looks at the status of whatever ran last,
+ * so in `false && x || y` the skipped x leaves 1 for y. */
+static int run_and_or(struct shell *sh, const struct and_or *ao)
+{
+    for (size_t j = 0; j < ao->npipelines; j++) {
+        const struct pipeline *pl = &ao->pipelines[j];
+        int status;
+
+        if (!should_run(pl, sh->status))
+            continue;
+        status = run_pipeline(sh, pl);
+        if (pl->negate)
+            status = status == 0 ? 1 : 0;
+        sh->status = status;
+        if (cut_short(sh))
+            break;
+    }
+    return sh->status;
+}
+
 int run_list(struct shell *sh, const struct list *list)
 {
     for (size_t i = 0; i < list->nitems; i++) {
         const struct and_or *ao = &list->items[i];
 
-        /* a && b || c: each pipeline looks at the status of whatever ran
-         * last, so in `false && x || y` the skipped x leaves 1 for y. */
-        for (size_t j = 0; j < ao->npipelines; j++) {
-            const struct pipeline *pl = &ao->pipelines[j];
-            int status;
-
-            if (!should_run(pl, sh->status))
-                continue;
-            status = run_pipeline(sh, pl);
-            if (pl->negate)
-                status = status == 0 ? 1 : 0;
-            sh->status = status;
-            if (cut_short(sh))
-                return sh->status;
+        if (ao->background) {
+            /* cmd &: the parser lets only one pipeline through, and it
+             * becomes a job of its own processes */
+            run_forked(sh, &ao->pipelines[0], NULL, ao->text);
+            sh->status = 0; /* POSIX: starting a job always works */
+        } else {
+            run_and_or(sh, ao);
         }
+        if (cut_short(sh))
+            return sh->status;
     }
     return sh->status;
 }
