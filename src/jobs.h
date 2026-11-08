@@ -57,9 +57,11 @@ void jobs_set_group(struct shell *sh, pid_t pid, pid_t pgid);
  * The jobs table: what runs in the background.
  *
  * The shell asks for children that ended with waitpid(-1, ..., WNOHANG)
- * at points where nothing runs in front: before each prompt, and in a
- * script before each command. So the notices come just before the next
- * prompt, as in bash, and no job stays a zombie for long.
+ * at points where nothing runs in front. At the prompt that happens the
+ * moment one ends: the SIGCHLD handler only writes a byte into a self-pipe,
+ * and the prompt waits on the terminal and that pipe together (see
+ * signals.h). In a script it happens before each command. Either way the
+ * notices come just before the next prompt, as in bash.
  */
 enum job_state {
     JOB_RUNNING,

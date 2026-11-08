@@ -12,6 +12,7 @@
 
 #include "error.h"
 #include "explain.h"
+#include "signals.h"
 #include "xalloc.h"
 
 static void ignore(int sig)
@@ -21,6 +22,11 @@ static void ignore(int sig)
     sa.sa_handler = SIG_IGN;
     sigemptyset(&sa.sa_mask);
     sigaction(sig, &sa, NULL);
+}
+
+static void collect(void *sh)
+{
+    jobs_reap(sh);
 }
 
 bool jobs_init(struct shell *sh)
@@ -59,6 +65,8 @@ bool jobs_init(struct shell *sh)
     tcsetpgrp(fd, sh->pgid);
     sh->have_tty_modes = tcgetattr(fd, &sh->tty_modes) == 0;
     sh->job_control = true;
+    if (!signals_watch_children(collect, sh))
+        shell_error(sh, "jobs: can't watch for children: %s", strerror(errno));
     return true;
 }
 
