@@ -11,9 +11,7 @@ import subprocess
 import pexpect
 
 PROMPT = r"\$ $"
-# Prints "started" first, so the test only presses Ctrl+C once the command
-# is really running, not while the shell is still starting it.
-LONG = "sh -c 'echo started; sleep 10'"
+LONG = "sleep 10"
 
 
 def leave(shell):
@@ -48,13 +46,13 @@ def test_ctrl_c_right_after_the_prompt_is_never_lost(terminal):
     assert leave(shell) == 130
 
 
-def test_ctrl_c_on_a_command_counts_once(terminal):
+def test_ctrl_c_on_a_command_counts_once(terminal, in_front):
     # The shell gets the Ctrl+C too while the command runs. It must not
     # come back as a second Ctrl+C at the next prompt.
     shell = terminal()
     shell.expect(PROMPT)
     shell.sendline(LONG)
-    shell.expect("started\r\n")
+    in_front(shell, "sleep")
     shell.sendintr()
     shell.expect(PROMPT, timeout=3)
     try:
@@ -80,22 +78,22 @@ def test_ctrl_c_drops_a_half_typed_line(terminal):
     assert leave(shell) == 0
 
 
-def test_ctrl_c_stops_the_command_not_the_shell(terminal):
+def test_ctrl_c_stops_the_command_not_the_shell(terminal, in_front):
     shell = terminal()
     shell.expect(PROMPT)
     shell.sendline(LONG)
-    shell.expect("started\r\n")
+    in_front(shell, "sleep")
     shell.sendintr()
     shell.expect(r"\^C\r\n.*" + PROMPT, timeout=3)  # well before the 10 s sleep ends
     assert shell.isalive()
     assert leave(shell) == 130
 
 
-def test_ctrl_c_stops_a_whole_pipeline(terminal):
+def test_ctrl_c_stops_a_whole_pipeline(terminal, in_front):
     shell = terminal()
     shell.expect(PROMPT)
     shell.sendline(f"{LONG} | cat | cat")
-    shell.expect("started\r\n")
+    in_front(shell, "sleep")
     shell.sendintr()
     shell.expect(PROMPT, timeout=3)
     assert leave(shell) == 130
@@ -123,11 +121,11 @@ def test_commands_get_the_default_sigint(terminal):
 # ---- Ctrl+\ -----------------------------------------------------------------
 
 
-def test_ctrl_backslash_stops_the_command(terminal):
+def test_ctrl_backslash_stops_the_command(terminal, in_front):
     shell = terminal()
     shell.expect(PROMPT)
     shell.sendline(LONG)
-    shell.expect("started\r\n")
+    in_front(shell, "sleep")
     shell.sendcontrol("\\")
     shell.expect(r"Quit.*\r\n.*" + PROMPT, timeout=3)
     assert leave(shell) == 131
