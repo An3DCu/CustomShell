@@ -588,6 +588,12 @@ static int run_forked(struct shell *sh, const struct pipeline *pl, char **first_
     pid_t pgid = 0;     /* the pipeline's process group: the first child's pid */
     int status = 0;
     bool failed = false;
+    bool hold_signals = bg_text != NULL && !sh->job_control;
+    sigset_t held, before;
+
+    sigemptyset(&held);
+    sigaddset(&held, SIGINT);
+    sigaddset(&held, SIGQUIT);
 
     fflush(stdout); /* or the children would get a copy of what's waiting */
     for (size_t i = 0; i < n; i++) {
@@ -608,7 +614,16 @@ static int run_forked(struct shell *sh, const struct pipeline *pl, char **first_
         }
         if (explain_on(sh) && !report_pipe(report))
             report[0] = report[1] = -1;
+        /* A background job in a script ignores Ctrl+C, but only once the
+         * child has set that up. Until then SIGINT and SIGQUIT stay blocked,
+         * so one that comes in between waits and is then dropped by the
+         * child, instead of killing it first. The shell unblocks right
+         * after fork, and a Ctrl+C meant for it arrives as usual. */
+        if (hold_signals)
+            sigprocmask(SIG_BLOCK, &held, &before);
         pid = fork();
+        if (pid != 0 && hold_signals)
+            sigprocmask(SIG_SETMASK, &before, NULL);
         if (pid < 0) {
             shell_error(sh, "fork: %s", strerror(errno));
             if (fds[0] >= 0) {
@@ -635,6 +650,8 @@ static int run_forked(struct shell *sh, const struct pipeline *pl, char **first_
                 signals_reset_in_child();
             if (bg_text != NULL)
                 background_child_setup(sh, i == 0);
+            if (hold_signals)
+                sigprocmask(SIG_SETMASK, &before, NULL); /* now ignored: let them through */
             if (prev_read >= 0 && prev_read != STDIN_FILENO) {
                 explain_event(sh, "stdin comes from the pipe", "dup2(%d, 0)", prev_read);
                 dup2(prev_read, STDIN_FILENO);

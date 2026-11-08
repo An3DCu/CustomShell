@@ -54,6 +54,55 @@ def test_like_dash(same_as_dash, script):
     same_as_dash(script)
 
 
+@pytest.mark.parametrize(
+    "script",
+    [
+        "false & wait $!; echo $?\n",
+        "sh -c 'exit 7' & p=$!; wait $p; echo $?\n",
+        "sleep 0.2 & sleep 0.1 & wait; echo all $?\n",
+        "wait; echo $?\n",
+        "sleep 0.1 & wait %1; echo $?\n",
+        "true & false & wait %%; echo $?\n",
+        "false & true & wait %-; echo $?\n",
+        "echo a | cat & wait; echo b\n",
+        "for i in 1 2; do echo $i; done & wait\n",
+        "sh -c 'kill -TERM $$' & wait $!; echo $?\n",
+        "false & sleep 0.2; wait $!; echo $?\n",   # done before wait, still known
+    ],
+)
+def test_wait_like_dash(same_as_dash, script):
+    same_as_dash(script)
+
+
+def test_wait_errors(run):
+    result = run(stdin="wait 99999\necho $?\nwait %9\necho $?\nwait abc\necho $?\n")
+    assert result.stderr == (
+        "acsh: wait: pid 99999 isn't a child of this shell\n"
+        "acsh: wait: %9: no such job\n"
+        "acsh: wait: abc: not a pid or a job\n"
+    )
+    assert result.stdout == "127\n127\n2\n"
+
+
+def test_wait_says_a_signal_killed_the_job(run):
+    result = run(stdin="sh -c 'kill -TERM $$' & wait $!; echo $?\n")
+    assert result.stdout == "143\n"
+    assert result.stderr == "Terminated\n"
+
+
+def test_a_script_job_ignores_ctrl_c(acsh, workdir):
+    # Without job control a background command ignores SIGINT, so Ctrl+C
+    # (sent to the whole group here) only stops what's in front.
+    # Twenty jobs, each sent SIGINT right after it starts, so the signal can
+    # come before the child has set up ignoring it; none may die of it.
+    script = workdir / "s.sh"
+    script.write_text("for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do\n"
+                      "  sleep 0.3 & kill -INT $!\n"
+                      "done\nsleep 0.6\njobs | grep -c Interrupt\n")
+    result = subprocess.run([acsh, str(script)], capture_output=True, text=True, timeout=10)
+    assert result.stdout == "0\n"
+
+
 def test_dollar_bang_is_the_last_command_of_the_job(run):
     # The job prints its own pid; $! has to be the same number. With a
     # pipeline, $! is its last command.
@@ -194,6 +243,39 @@ def test_a_job_is_collected_while_the_prompt_waits(prompt):
         prompt.expect("done", timeout=0.3)
     prompt.sendline("")
     prompt.expect_exact("job 1 done: sleep 0.2 (exit 0)")
+
+
+def test_ctrl_c_stops_wait_and_the_job(prompt):
+    prompt.sendline("sleep 10 &")
+    prompt.expect("job 1 started")
+    prompt.sendline("wait")
+    prompt.expect_exact("wait\r\n")
+    time.sleep(0.5)
+    prompt.sendintr()
+    prompt.expect(r"acsh\$ ")
+    prompt.sendline("echo $?")
+    prompt.expect("130")
+    # The job got the Ctrl+C too: its notice says so, and nothing runs.
+    time.sleep(0.2)
+    prompt.sendline("jobs; echo end")
+    prompt.expect("end\r\n")
+    output = prompt.before
+    prompt.expect(r"acsh\$ ")
+    assert "running" not in output
+
+
+def test_wait_waits_for_a_stopped_job_too(prompt):
+    prompt.sendline("cat &")  # stops: it reads the terminal from the background
+    prompt.expect("job 1 started")
+    time.sleep(0.3)
+    prompt.sendline("wait")
+    prompt.expect_exact("wait\r\n")
+    with pytest.raises(pexpect.TIMEOUT):
+        prompt.expect(r"acsh\$ ", timeout=1)
+    prompt.sendintr()
+    prompt.expect(r"acsh\$ ")
+    prompt.sendline("echo $?")
+    prompt.expect("130")
 
 
 def test_explain_shows_a_job(prompt):

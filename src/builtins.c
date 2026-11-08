@@ -697,6 +697,64 @@ static int builtin_jobs(struct shell *sh, int argc, char **argv)
     return 0;
 }
 
+/* ---- wait --------------------------------------------------------------- */
+
+/* A pid as a whole positive number, or 0. */
+static pid_t parse_pid(const char *s)
+{
+    long n;
+
+    if (!parse_number(s, &n) || n <= 0)
+        return 0;
+    return (pid_t)n;
+}
+
+/*
+ * wait            every job, then status 0
+ * wait %n | pid   that one, and its status; 127 if it isn't ours
+ * Several at once give the status of the last one.
+ */
+static int builtin_wait(struct shell *sh, int argc, char **argv)
+{
+    int status = 0;
+
+    jobs_reap(sh);
+    if (argc == 1)
+        return jobs_wait_all(sh);
+    for (int i = 1; i < argc; i++) {
+        char err[128];
+        struct job *job;
+
+        if (argv[i][0] == '%') {
+            job = jobs_find(sh, argv[i], err, sizeof err);
+            if (job == NULL) {
+                shell_error(sh, "wait: %s", err);
+                status = 127;
+                continue;
+            }
+            status = jobs_wait(sh, job);
+        } else {
+            pid_t pid = parse_pid(argv[i]);
+
+            if (pid == 0) {
+                shell_error(sh, "wait: %s: not a pid or a job", argv[i]);
+                status = 2;
+                continue;
+            }
+            job = jobs_find_pid(sh, pid);
+            if (job == NULL) {
+                shell_error(sh, "wait: pid %ld isn't a child of this shell", (long)pid);
+                status = 127;
+                continue;
+            }
+            status = jobs_wait_pid(sh, job, pid);
+        }
+        if (sh->interrupted)
+            return 130;
+    }
+    return status;
+}
+
 /* ---- set and explain ---------------------------------------------------- */
 
 /* set with nothing: every variable, NAME='value', sorted, as dash prints
@@ -821,6 +879,8 @@ static const struct builtin builtins[] = {
       "Succeed: give status 0.", false },
     { "unset",  builtin_unset,  "unset name ...",
       "Remove the variables.", true },
+    { "wait",   builtin_wait,   "wait [%n | pid ...]",
+      "Wait for jobs to end; give the status of the last one.", false },
 };
 
 #define NBUILTINS (sizeof builtins / sizeof builtins[0])
@@ -891,6 +951,11 @@ static const struct {
       "file is looked for in PATH, then in this folder. The same as .\n" },
     { "true",
       "Gives status 0 and does nothing else.\n" },
+    { "wait",
+      "wait         wait for every job, stopped ones too, then give status 0\n"
+      "wait %n      wait for job n and give its status (%% or %+ newest, %- the one before)\n"
+      "wait pid     the same for one process, like $!\n"
+      "In a terminal, Ctrl+C stops the waiting and the jobs it waits for (status 130).\n" },
     { "unset",
       "Removes the variables, from the shell and from what commands get.\n" },
 };

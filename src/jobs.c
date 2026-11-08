@@ -11,6 +11,7 @@
 #include <unistd.h>
 
 #include "error.h"
+#include "exec.h"
 #include "explain.h"
 #include "signals.h"
 #include "xalloc.h"
@@ -188,8 +189,7 @@ static void remove_job(struct shell *sh, struct job *job)
     sh->njobs--;
 }
 
-/* The job that has pid in it, or NULL. */
-static struct job *find_pid(struct shell *sh, pid_t pid)
+struct job *jobs_find_pid(struct shell *sh, pid_t pid)
 {
     for (size_t i = 0; i < sh->njobs; i++) {
         for (size_t k = 0; k < sh->jobs[i].npids; k++) {
@@ -203,7 +203,7 @@ static struct job *find_pid(struct shell *sh, pid_t pid)
 /* What waitpid said about pid, written into its job. */
 static void record(struct shell *sh, pid_t pid, int wstatus)
 {
-    struct job *job = find_pid(sh, pid);
+    struct job *job = jobs_find_pid(sh, pid);
 
     if (job == NULL)
         return; /* not one of ours: a stray child from before */
@@ -279,6 +279,118 @@ void jobs_list(struct shell *sh)
         else
             i++;
     }
+}
+
+struct job *jobs_find(struct shell *sh, const char *spec, char *err, size_t errlen)
+{
+    char *end;
+    long n;
+
+    if (strcmp(spec, "%%") == 0 || strcmp(spec, "%+") == 0) {
+        if (sh->njobs > 0)
+            return &sh->jobs[sh->njobs - 1];
+    } else if (strcmp(spec, "%-") == 0) {
+        if (sh->njobs > 1)
+            return &sh->jobs[sh->njobs - 2];
+    } else {
+        if (spec[0] != '%' || spec[1] == '\0') {
+            snprintf(err, errlen, "%s: not a job (jobs are %%1, %%2, ...)", spec);
+            return NULL;
+        }
+        n = strtol(spec + 1, &end, 10);
+        if (*end != '\0' || n < 1) {
+            snprintf(err, errlen, "%s: not a job (jobs are %%1, %%2, ...)", spec);
+            return NULL;
+        }
+        for (size_t i = 0; i < sh->njobs; i++) {
+            if (sh->jobs[i].id == n)
+                return &sh->jobs[i];
+        }
+    }
+    snprintf(err, errlen, "%s: no such job", spec);
+    return NULL;
+}
+
+/* Waits for one process of a job; false after Ctrl+C. At the prompt it
+ * sleeps on the self-pipe and collects with jobs_reap; in a script, where
+ * there's no pipe and Ctrl+C ends the script anyway, waitpid just blocks. */
+static bool wait_one(struct shell *sh, struct job *job, size_t k)
+{
+    while (!job->ended[k]) {
+        int wstatus;
+        pid_t got;
+
+        if (sh->job_control) {
+            jobs_reap(sh);
+            if (job->ended[k])
+                break;
+            if (!signals_sleep_until_child())
+                return false;
+            continue;
+        }
+        got = waitpid(job->pids[k], &wstatus, 0);
+        if (got < 0 && errno == EINTR)
+            continue;
+        if (got < 0) {
+            /* gone already, without us seeing it: count it as ended */
+            job->ended[k] = true;
+            if (++job->nended == job->npids)
+                job->state = JOB_DONE;
+            break;
+        }
+        record(sh, got, wstatus);
+    }
+    return true;
+}
+
+/* Ctrl+C during wait: the jobs get it too, as if they were in front. */
+static int interrupted(struct shell *sh, struct job *job)
+{
+    if (job->pgid > 0)
+        kill(-job->pgid, SIGINT);
+    sh->interrupted = true;
+    return 130;
+}
+
+int jobs_wait_pid(struct shell *sh, struct job *job, pid_t pid)
+{
+    int status = 0;
+
+    for (size_t k = 0; k < job->npids; k++) {
+        if (job->pids[k] != pid)
+            continue;
+        if (!wait_one(sh, job, k))
+            return interrupted(sh, job);
+        status = exit_status_from_wait(job->wstatus[k]);
+    }
+    if (job->nended == job->npids)
+        remove_job(sh, job);
+    return status;
+}
+
+int jobs_wait(struct shell *sh, struct job *job)
+{
+    int status;
+
+    for (size_t k = 0; k < job->npids; k++) {
+        if (!wait_one(sh, job, k))
+            return interrupted(sh, job);
+    }
+    status = exit_status_from_wait(job->wstatus[job->npids - 1]);
+    remove_job(sh, job);
+    return status;
+}
+
+int jobs_wait_all(struct shell *sh)
+{
+    while (sh->njobs > 0) {
+        if (jobs_wait(sh, &sh->jobs[0]) == 130 && sh->interrupted) {
+            for (size_t i = 0; i < sh->njobs; i++)
+                interrupted(sh, &sh->jobs[i]);
+            return 130;
+        }
+    }
+    return 0;
 }
 
 void jobs_free(struct shell *sh)
