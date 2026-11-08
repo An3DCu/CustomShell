@@ -46,10 +46,22 @@ def same_as_dash(acsh, workdir):
         "for i in 1 2; do echo $i; done & sleep 0.2\n",
         "false & echo $?\n",                    # starting a job always works
         "sleep 0.1 & sleep 0.1 & echo two\n",
+        "echo \"[$!]\"\n",                      # empty until something runs in the background
+        "true & p=$!; [ -n \"$p\" ] && echo set\n",
     ],
 )
 def test_like_dash(same_as_dash, script):
     same_as_dash(script)
+
+
+def test_dollar_bang_is_the_last_command_of_the_job(run):
+    # The job prints its own pid; $! has to be the same number. With a
+    # pipeline, $! is its last command.
+    result = run(stdin="sh -c 'echo $$' & sleep 0.2; echo $!\n"
+                       "true | sh -c 'echo $$' & sleep 0.2; echo $!\n")
+    lines = result.stdout.split()
+    assert lines[0] == lines[1]
+    assert lines[2] == lines[3]
 
 
 @pytest.mark.parametrize("line", ["a && b &", "a || b &", "! a &"])
@@ -86,8 +98,11 @@ def prompt(terminal):
 
 def test_notices_when_a_job_starts_and_ends(prompt):
     prompt.sendline("sleep 0.3 &")
-    prompt.expect(r"job 1 started: sleep 0\.3 \(pid \d+\)")
+    prompt.expect(r"job 1 started: sleep 0\.3 \(pid (\d+)\)")
+    pid = prompt.match.group(1)
     prompt.expect(r"acsh\$ ")
+    prompt.sendline("echo $!")
+    prompt.expect(f"\r\n{pid}\r\n")  # the notice and $! agree
     time.sleep(0.6)
     prompt.sendline("")
     prompt.expect_exact("job 1 done: sleep 0.3 (exit 0)")

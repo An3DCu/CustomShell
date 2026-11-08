@@ -12,7 +12,7 @@
  * POSIX gives:
  *
  *   1. tilde        ~ and ~/x become $HOME, ~name becomes that user's home
- *   2. parameters   $X, ${X}, $?, $$, $#, $0, $1..., $@, $*
+ *   2. parameters   $X, ${X}, $?, $$, $!, $#, $0, $1..., $@, $*
  *   3. splitting    the result of an unquoted $X is cut into words on IFS
  *   4. file names   a word with an unquoted *, ? or [...] becomes the
  *                   names that match it, sorted (see pattern.h)

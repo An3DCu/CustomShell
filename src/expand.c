@@ -182,6 +182,12 @@ static bool special_value(const struct shell *sh, const char *name, size_t n,
     if (n != 1)
         return false;
     switch (name[0]) {
+    case '!':
+        if (sh->last_bg <= 0)
+            return true; /* nothing in the background yet: empty, as in dash */
+        snprintf(buf, size, "%ld", (long)sh->last_bg);
+        *value = buf;
+        return true;
     case '#':
         snprintf(buf, size, "%zu", sh->params.len);
         *value = buf;

@@ -28,6 +28,7 @@ static void reset(void)
     sh.status = 0;
     sh.pid = 4242;
     sh.name = "acsh";
+    sh.last_bg = 0;
 }
 
 static void set(const char *name, const char *value)
@@ -222,7 +223,10 @@ static void test_a_lone_dollar_stays(void)
     CHECK_STR_EQ("[a$]", fields("a$"));
     CHECK_STR_EQ("[$%]", fields("$%"));
     CHECK_STR_EQ("[$-x]", fields("$-x")); /* $- isn't supported; kept as typed */
-    CHECK_STR_EQ("[$!]", fields("$!"));   /* comes with background jobs */
+    CHECK_STR_EQ("", fields("$!"));       /* nothing in the background yet */
+    sh.last_bg = 4321;
+    CHECK_STR_EQ("[4321]", fields("$!"));
+    CHECK_STR_EQ("[4321]", fields("${!}"));
 }
 
 static void test_bad_substitutions(void)

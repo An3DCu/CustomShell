@@ -687,6 +687,7 @@ static int run_forked(struct shell *sh, const struct pipeline *pl, char **first_
     if (bg_text != NULL && started > 0) {
         /* In the background: the job takes the pids, and jobs_reap
          * collects them later, so none is left as a zombie. */
+        sh->last_bg = pids[started - 1];
         jobs_add(sh, sh->job_control ? pgid : 0, pids, started, bg_text);
         return failed ? 1 : 0;
     }
