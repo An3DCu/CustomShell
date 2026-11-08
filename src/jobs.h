@@ -53,4 +53,49 @@ void jobs_join_group(struct shell *sh, pid_t pgid, bool foreground);
 /* In the shell, right after forking pid: the same setpgid, from this side. */
 void jobs_set_group(struct shell *sh, pid_t pid, pid_t pgid);
 
+/*
+ * The jobs table: what runs in the background.
+ *
+ * The shell asks for children that ended with waitpid(-1, ..., WNOHANG)
+ * at points where nothing runs in front: before each prompt, and in a
+ * script before each command. So the notices come just before the next
+ * prompt, as in bash, and no job stays a zombie for long.
+ */
+enum job_state {
+    JOB_RUNNING,
+    JOB_STOPPED,
+    JOB_DONE,
+};
+
+struct job {
+    int id;             /* the n in %n */
+    pid_t pgid;         /* its process group, or 0 without job control */
+    pid_t *pids;        /* every process in it, in pipeline order */
+    int *wstatus;       /* what waitpid said for each, once it ended */
+    bool *ended;
+    size_t npids;
+    size_t nended;
+    char *text;         /* the command as typed, on one line */
+    enum job_state state;
+};
+
+/* Adds a job for pids (the job takes over the array). In an interactive
+ * shell it says `job 1 started: sleep 30 (pid 4211)`. Returns its number. */
+int jobs_add(struct shell *sh, pid_t pgid, pid_t *pids, size_t npids, const char *text);
+
+/* Collects every child that ended or stopped since the last call, without
+ * waiting. */
+void jobs_reap(struct shell *sh);
+
+/* In an interactive shell: `job 1 done: sleep 30 (exit 0)` for each job
+ * that ended, and takes it off the list. */
+void jobs_notify(struct shell *sh);
+
+/* `jobs`: one line per job. Finished ones are shown once more, then
+ * forgotten. */
+void jobs_list(struct shell *sh);
+
+/* Forgets every job, at exit. */
+void jobs_free(struct shell *sh);
+
 #endif

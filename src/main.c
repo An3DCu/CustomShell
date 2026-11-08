@@ -191,6 +191,7 @@ int main(int argc, char **argv)
     if (r.fd > STDIN_FILENO)
         close(r.fd);
 out:
+    jobs_free(&sh);
     strvec_free(&sh.params);
     vars_free(&sh.vars);
     return status;

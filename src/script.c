@@ -11,6 +11,7 @@
 #include "error.h"
 #include "exec.h"
 #include "explain.h"
+#include "jobs.h"
 #include "input.h"
 #include "parser.h"
 #include "prompt.h"
@@ -101,10 +102,15 @@ int script_run(struct shell *sh, struct reader *r)
         ssize_t n;
 
         if (r->interactive) {
-            if (cmd.len == 0)
+            if (cmd.len == 0) {
+                /* Background jobs that ended get their notice now, just
+                 * before the prompt, as in bash. */
+                jobs_reap(sh);
+                jobs_notify(sh);
                 prompt_print(sh);
-            else
+            } else {
                 fputs("> ", stderr); /* the command isn't finished yet */
+            }
         }
         if (cmd.len == 0)
             unit = r->lines + 1;
@@ -152,6 +158,7 @@ int script_run(struct shell *sh, struct reader *r)
             continue;
         }
         sh->unit_line = unit;
+        jobs_reap(sh); /* in a script too, so finished jobs don't stay zombies */
         run_text(sh, list);
         list_free(list);
         if (sh->exiting)

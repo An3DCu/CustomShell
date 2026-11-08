@@ -12,6 +12,7 @@
 #include "error.h"
 #include "explain.h"
 #include "input.h"
+#include "jobs.h"
 #include "script.h"
 #include "strvec.h"
 #include "vars.h"
@@ -683,6 +684,19 @@ static int builtin_source(struct shell *sh, int argc, char **argv)
     return status;
 }
 
+/* ---- jobs --------------------------------------------------------------- */
+
+static int builtin_jobs(struct shell *sh, int argc, char **argv)
+{
+    (void)argv;
+    if (argc > 1) {
+        shell_error(sh, "jobs: takes no arguments");
+        return 2;
+    }
+    jobs_list(sh);
+    return 0;
+}
+
 /* ---- set and explain ---------------------------------------------------- */
 
 /* set with nothing: every variable, NAME='value', sorted, as dash prints
@@ -791,6 +805,8 @@ static const struct builtin builtins[] = {
       "Fail: give status 1.", false },
     { "help",   builtin_help,   "help [name]",
       "List the built-ins, or show one.", false },
+    { "jobs",   builtin_jobs,   "jobs",
+      "List the jobs: what runs in the background or is stopped.", false },
     { "pwd",    builtin_pwd,    "pwd",
       "Print the current folder.", false },
     { "read",   builtin_read,   "read [-r] [name ...]",
@@ -851,6 +867,9 @@ static const struct {
       "Gives status 1 and does nothing else.\n" },
     { "help",
       "help lists every built-in in one line; help name shows more about one.\n" },
+    { "jobs",
+      "One line for each job: its number, running, stopped or done, and the\n"
+      "command. A job that's done is shown once more, then forgotten.\n" },
     { "pwd",
       "Prints the full path of the current folder.\n" },
     { "read",

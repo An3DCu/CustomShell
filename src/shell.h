@@ -8,6 +8,8 @@
 #include "strvec.h"
 #include "vars.h"
 
+struct job; /* jobs.h */
+
 /* What the shell remembers between commands. */
 struct shell {
     bool interactive; /* stdin and stderr are a terminal: show a prompt */
@@ -33,6 +35,9 @@ struct shell {
     int tty_fd;       /* the shell's copy of the terminal, at 10 or above */
     struct termios tty_modes; /* the terminal as the shell wants it, to put back after a job */
     bool have_tty_modes;
+    struct job *jobs; /* background and stopped jobs, by number */
+    size_t njobs;
+    size_t jobs_cap;
     struct vars vars;
 };
 

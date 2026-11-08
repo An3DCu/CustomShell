@@ -112,7 +112,6 @@ def test_empty_lines_keep_the_status(same_as_dash):
         ("echo a | ; echo b\n", "acsh: syntax error near ';'\n"),
         ("echo a )\n", "acsh: syntax error near ')'\n"),
         ("(echo a)\n", "acsh: '(' isn't supported yet\n"),
-        ("sleep 1 &\n", "acsh: '&' isn't supported yet\n"),
     ],
 )
 def test_syntax_errors_stop_a_script(run, script, message):

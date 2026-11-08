@@ -250,7 +250,7 @@ static void plan_command(struct tree *t, const struct command *cmd, bool root, b
 static void plan_pipeline(struct tree *t, const struct pipeline *pl, bool root, bool last,
                           const char *lead)
 {
-    char head[64];
+    char head[128];
     size_t len;
 
     if (pl->ncommands == 1 && !pl->negate) {
@@ -271,13 +271,14 @@ static void plan_pipeline(struct tree *t, const struct pipeline *pl, bool root, 
 
 static void plan_and_or(struct tree *t, const struct and_or *ao, bool root, bool last)
 {
+    const char *bg = ao->background ? "in the background (&): " : "";
     size_t len;
 
     if (ao->npipelines == 1) {
-        plan_pipeline(t, &ao->pipelines[0], root, last, "");
+        plan_pipeline(t, &ao->pipelines[0], root, last, bg);
         return;
     }
-    node(t, root, last, "and-or of %zu", ao->npipelines);
+    node(t, root, last, "%sand-or of %zu", bg, ao->npipelines);
     len = descend(t, root, last);
     for (size_t i = 0; i < ao->npipelines; i++) {
         const struct pipeline *pl = &ao->pipelines[i];

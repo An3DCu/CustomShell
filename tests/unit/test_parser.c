@@ -142,8 +142,9 @@ static size_t describe_list(const struct list *list, size_t used)
     for (size_t i = 0; i < list->nitems; i++) {
         const struct and_or *ao = &list->items[i];
 
-        if (i > 0)
-            used += (size_t)snprintf(described + used, sizeof described - used, " ; ");
+        if (i > 0)  /* after a & the & itself separates */
+            used += (size_t)snprintf(described + used, sizeof described - used, "%s",
+                                     list->items[i - 1].background ? " " : " ; ");
         for (size_t j = 0; j < ao->npipelines; j++) {
             const struct pipeline *pl = &ao->pipelines[j];
 
@@ -153,6 +154,8 @@ static size_t describe_list(const struct list *list, size_t used)
                 used += (size_t)snprintf(described + used, sizeof described - used, " || ");
             used = describe_pipeline(pl, used);
         }
+        if (ao->background)
+            used += (size_t)snprintf(described + used, sizeof described - used, " &");
     }
     return used;
 }
@@ -385,10 +388,42 @@ static void test_unfinished_compounds(void)
     CHECK_PARSE("if a; then while b; do\n", "incomplete: missing 'done'");
 }
 
+static void test_background(void)
+{
+    CHECK_PARSE("sleep 1 &", "sleep 1 &");
+    CHECK_PARSE("sleep 1 & echo", "sleep 1 & echo");
+    CHECK_PARSE("a & b & c", "a & b & c");
+    CHECK_PARSE("a | b &", "a | b &");
+    CHECK_PARSE("a &\nb", "a & b");
+    CHECK_PARSE("for x in a; do b & done", "for x in a do {b &} done");
+    CHECK_PARSE("& a", "syntax: syntax error near '&'");
+    CHECK_PARSE("a &;", "syntax: syntax error near ';'");
+    CHECK_PARSE("a & &", "syntax: syntax error near '&'");
+    /* lists in the background come later */
+    CHECK_PARSE("a && b &", "syntax: only a single pipeline can run in the background (for now)");
+    CHECK_PARSE("! a &", "syntax: only a single pipeline can run in the background (for now)");
+}
+
+/* The text a job shows in `jobs`: the and-or list as typed, without the &. */
+static void test_background_text(void)
+{
+    struct list *list;
+    char err[128];
+
+    CHECK(parse_program("  sleep  30 | cat &  echo next\n", &list, err, sizeof err) == PARSE_OK);
+    CHECK_STR_EQ("sleep  30 | cat", list->items[0].text);
+    CHECK(list->items[0].background);
+    CHECK_STR_EQ("echo next", list->items[1].text);
+    CHECK(!list->items[1].background);
+    list_free(list);
+    CHECK(parse_program("a | b & # note\n", &list, err, sizeof err) == PARSE_OK);
+    CHECK_STR_EQ("a | b", list->items[0].text);
+    list_free(list);
+}
+
 static void test_not_supported_yet(void)
 {
-    CHECK_PARSE("sleep 1 &", "syntax: '&' isn't supported yet");
-    CHECK_PARSE("sleep 1 & echo", "syntax: '&' isn't supported yet");
+    CHECK_PARSE("(echo a)", "syntax: '(' isn't supported yet");
 }
 
 static void test_unfinished_lines(void)
@@ -505,6 +540,8 @@ int main(void)
     RUN(test_reserved_words_only_where_a_command_starts);
     RUN(test_compound_syntax_errors);
     RUN(test_unfinished_compounds);
+    RUN(test_background);
+    RUN(test_background_text);
     RUN(test_not_supported_yet);
     RUN(test_unfinished_lines);
     RUN(test_lines_joined_by_a_backslash);

@@ -23,7 +23,7 @@
  * now, where newline means one or more newlines:
  *
  *     program     = [newline] [list] [newline]
- *     list        = and_or { ( ";" | newline ) and_or } [";"]
+ *     list        = and_or { ( ";" | "&" | newline ) and_or } [";" | "&"]
  *     and_or      = pipeline { ( "&&" | "||" ) [newline] pipeline }
  *     pipeline    = ["!"] command { "|" [newline] command }
  *     command     = simple | compound { redirection }
@@ -111,10 +111,12 @@ struct pipeline {
     enum run_if run_if;
 };
 
-/* a && b || c */
+/* a && b || c, or with & after it, the same in the background */
 struct and_or {
     struct pipeline *pipelines;
     size_t npipelines;
+    bool background;      /* ended with &: runs as a job, the shell doesn't wait */
+    char *text;           /* as typed, without the &: what `jobs` shows */
 };
 
 /* a; b, or a and b on two lines */
