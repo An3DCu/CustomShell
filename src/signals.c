@@ -98,15 +98,38 @@ bool signals_watch_children(void (*hook)(void *), void *arg)
     return true;
 }
 
-/* Empties the self-pipe and lets the hook collect the children. */
-static void children_changed(void)
+static void drain_child_pipe(void)
 {
     char buf[64];
 
     while (read(child_pipe[0], buf, sizeof buf) > 0)
         ;
+}
+
+/* Empties the self-pipe and lets the hook collect the children. */
+static void children_changed(void)
+{
+    drain_child_pipe();
     if (child_hook != NULL)
         child_hook(child_hook_arg);
+}
+
+bool signals_sleep_until_child(void)
+{
+    sigset_t while_waiting;
+    fd_set readable;
+
+    sigprocmask(SIG_BLOCK, NULL, &while_waiting);
+    sigdelset(&while_waiting, SIGINT);
+    FD_ZERO(&readable);
+    FD_SET(child_pipe[0], &readable);
+    got_sigint = 0;
+    if (pselect(child_pipe[0] + 1, &readable, NULL, NULL, NULL, &while_waiting) > 0) {
+        drain_child_pipe();
+        return true;
+    }
+    /* EINTR: Ctrl+C, or SIGCHLD itself, after which the caller looks again */
+    return !got_sigint;
 }
 
 bool signals_wait_for_input(int fd)

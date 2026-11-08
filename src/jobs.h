@@ -97,6 +97,24 @@ void jobs_notify(struct shell *sh);
  * forgotten. */
 void jobs_list(struct shell *sh);
 
+/* The job that spec names: %n, %% or %+ for the newest, %- for the one
+ * before it. NULL, with a reason in err, if there's none. */
+struct job *jobs_find(struct shell *sh, const char *spec, char *err, size_t errlen);
+
+/* The job that has pid in it, or NULL. */
+struct job *jobs_find_pid(struct shell *sh, pid_t pid);
+
+/*
+ * `wait`. Each waits until the job (or the one process) has ended, stopped
+ * jobs too, gives its status like a command in front (128 + N and the
+ * signal's name if a signal killed it), and forgets the job once it's
+ * done. At the prompt, Ctrl+C stops the waiting and sends SIGINT to the
+ * jobs being waited for; they give 130 and set sh->interrupted.
+ */
+int jobs_wait(struct shell *sh, struct job *job);
+int jobs_wait_pid(struct shell *sh, struct job *job, pid_t pid);
+int jobs_wait_all(struct shell *sh);
+
 /* Forgets every job, at exit. */
 void jobs_free(struct shell *sh);
 

@@ -30,6 +30,13 @@ void signals_init_interactive(void);
  * collect it. False if the pipe can't be made. */
 bool signals_watch_children(void (*hook)(void *), void *arg);
 
+/* For `wait` at the prompt: sleeps until the self-pipe says a child ended
+ * or stopped (true) or Ctrl+C is pressed (false), with SIGINT let through
+ * only while it sleeps, like the prompt. The caller then asks waitpid.
+ * A child that ended before the call left a byte in the pipe, so it's
+ * never missed. Only with the pipe (signals_watch_children). */
+bool signals_sleep_until_child(void);
+
 /* Waits until fd has input (true) or Ctrl+C was pressed (false, errno
  * EINTR). Other errors return false with errno set. While it waits, it
  * collects children through the self-pipe if there is one. */
