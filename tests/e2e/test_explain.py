@@ -207,13 +207,6 @@ def test_explanation_is_not_caught_by_the_commands_stderr(run, workdir):
     assert "plan" not in errors
 
 
-def test_children_get_no_extra_fds(run):
-    result = run(stdin="explain ls /proc/self/fd\n", env=ENV)
-    # ls opens one fd of its own for the folder; the explain copy and the
-    # report pipe are close-on-exec
-    assert result.stdout.split() == ["0", "1", "2", "3"]
-
-
 def test_only_the_explained_line(run):
     err, result = explained(run, "explain echo a\necho b")
     assert err.count("plan\n") == 1

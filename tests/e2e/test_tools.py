@@ -150,8 +150,13 @@ def test_cat_options(tools):
 # ---- head -------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("name", INPUTS)
-@pytest.mark.parametrize("flags", [[], ["-n", "0"], ["-n", "1"], ["-n", "3"], ["-n", "100000"]])
+# Every input with the counts that behave differently (none, 0, a few);
+# the rest once each, on the file where they matter.
+@pytest.mark.parametrize(
+    "name, flags",
+    [(name, flags) for name in INPUTS for flags in ([], ["-n", "0"], ["-n", "3"])]
+    + [("many_lines", ["-n", "1"]), ("many_lines", ["-n", "100000"])],
+)
 def test_head_matches_the_system(tools, files, name, flags):
     mine = run_tool(tools / "head", *flags, files[name])
     theirs = system("head", *flags, files[name])
@@ -203,8 +208,13 @@ def test_head_missing_file(tools, files):
 # ---- wc ---------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("name", INPUTS)
-@pytest.mark.parametrize("flags", [[], ["-l"], ["-w"], ["-c"], ["-lw"], ["-cl"]])
+# Every input with all counts, one count, and two together; the other
+# single counts once each, on the file where they're hardest.
+@pytest.mark.parametrize(
+    "name, flags",
+    [(name, flags) for name in INPUTS for flags in ([], ["-l"], ["-cl"])]
+    + [("whitespace", ["-w"]), ("binary", ["-c"]), ("many_lines", ["-lw"])],
+)
 def test_wc_counts_match_the_system(tools, files, name, flags):
     mine = run_tool(tools / "wc", *flags, files[name])
     theirs = system("wc", *flags, files[name])
