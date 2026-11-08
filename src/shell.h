@@ -38,6 +38,7 @@ struct shell {
     struct job *jobs; /* background and stopped jobs, by number */
     size_t njobs;
     size_t jobs_cap;
+    pid_t last_bg;    /* $!: the last command started in the background, 0 if none */
     struct vars vars;
 };
 
