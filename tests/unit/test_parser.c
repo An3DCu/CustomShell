@@ -404,20 +404,25 @@ static void test_background(void)
     CHECK_PARSE("! a &", "syntax: only a single pipeline can run in the background (for now)");
 }
 
-/* The text a job shows in `jobs`: the and-or list as typed, without the &. */
-static void test_background_text(void)
+/* The text a job shows in `jobs`: the pipeline as typed, without the &. */
+static void test_pipeline_text(void)
 {
     struct list *list;
     char err[128];
 
     CHECK(parse_program("  sleep  30 | cat &  echo next\n", &list, err, sizeof err) == PARSE_OK);
-    CHECK_STR_EQ("sleep  30 | cat", list->items[0].text);
+    CHECK_STR_EQ("sleep  30 | cat", list->items[0].pipelines[0].text);
     CHECK(list->items[0].background);
-    CHECK_STR_EQ("echo next", list->items[1].text);
+    CHECK_STR_EQ("echo next", list->items[1].pipelines[0].text);
     CHECK(!list->items[1].background);
     list_free(list);
     CHECK(parse_program("a | b & # note\n", &list, err, sizeof err) == PARSE_OK);
-    CHECK_STR_EQ("a | b", list->items[0].text);
+    CHECK_STR_EQ("a | b", list->items[0].pipelines[0].text);
+    list_free(list);
+    /* each pipeline of an and-or list has its own, for Ctrl+Z on one of them */
+    CHECK(parse_program("vim a && ! make |\n cat\n", &list, err, sizeof err) == PARSE_OK);
+    CHECK_STR_EQ("vim a", list->items[0].pipelines[0].text);
+    CHECK_STR_EQ("! make |\n cat", list->items[0].pipelines[1].text);
     list_free(list);
 }
 
@@ -541,7 +546,7 @@ int main(void)
     RUN(test_compound_syntax_errors);
     RUN(test_unfinished_compounds);
     RUN(test_background);
-    RUN(test_background_text);
+    RUN(test_pipeline_text);
     RUN(test_not_supported_yet);
     RUN(test_unfinished_lines);
     RUN(test_lines_joined_by_a_backslash);

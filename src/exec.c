@@ -170,47 +170,13 @@ int exit_status_from_wait(int wstatus)
     return 1;
 }
 
-static int wait_for(struct shell *sh, pid_t pid, pid_t pgid)
-{
-    /* With job control, waitpid also says when the job is stopped. */
-    int flags = sh->job_control ? WUNTRACED : 0;
-    int wstatus;
-
-    for (;;) {
-        /* A signal can interrupt waitpid with EINTR; the child is still
-         * there, so keep waiting for it. */
-        if (waitpid(pid, &wstatus, flags) < 0) {
-            if (errno == EINTR)
-                continue;
-            shell_error(sh, "waitpid: %s", strerror(errno));
-            return 1;
-        }
-        if (!WIFSTOPPED(wstatus))
-            break;
-        /* Ctrl+Z stopped it. Jobs that stay stopped come later; until then
-         * the job just goes on, so the shell never waits for it forever. */
-        explain_event(sh, "Ctrl+Z: for now the job goes on", "waitpid(%ld) = stopped by signal %d",
-                      (long)pid, WSTOPSIG(wstatus));
-        kill(-pgid, SIGCONT);
-    }
-    if (WIFSIGNALED(wstatus) && WTERMSIG(wstatus) == SIGINT)
-        sh->interrupted = true;
-    if (explain_on(sh)) {
-        if (WIFEXITED(wstatus))
-            explain_event(sh, NULL, "waitpid(%ld) = exit %d", (long)pid, WEXITSTATUS(wstatus));
-        else if (WIFSIGNALED(wstatus))
-            explain_event(sh, strsignal(WTERMSIG(wstatus)), "waitpid(%ld) = killed by signal %d",
-                          (long)pid, WTERMSIG(wstatus));
-    }
-    return exit_status_from_wait(wstatus);
-}
-
 /* ---- if, while, until and for ------------------------------------------ */
 
-/* Something that ends every running list: exit, Ctrl+C, break, continue. */
+/* Something that ends every running list: exit, Ctrl+C, Ctrl+Z, break,
+ * continue. */
 static bool cut_short(const struct shell *sh)
 {
-    return sh->exiting || sh->interrupted || sh->breaks > 0 || sh->continues > 0;
+    return sh->exiting || sh->interrupted || sh->stopped || sh->breaks > 0 || sh->continues > 0;
 }
 
 /*
@@ -221,7 +187,7 @@ static bool cut_short(const struct shell *sh)
  */
 static bool loop_ends(struct shell *sh)
 {
-    if (sh->exiting || sh->interrupted)
+    if (sh->exiting || sh->interrupted || sh->stopped)
         return true;
     if (sh->breaks > 0) {
         sh->breaks--;
@@ -244,10 +210,10 @@ static bool loop_ends(struct shell *sh)
 }
 
 /* The status a loop gives: its last body's, or 0 if the body never ran,
- * except after exit or Ctrl+C, which keep theirs. */
+ * except after exit, Ctrl+C or Ctrl+Z, which keep theirs. */
 static int loop_status(const struct shell *sh, int body_status)
 {
-    return sh->exiting || sh->interrupted ? sh->status : body_status;
+    return sh->exiting || sh->interrupted || sh->stopped ? sh->status : body_status;
 }
 
 /* if: the first branch whose condition gives 0 runs; the status is that
@@ -709,17 +675,14 @@ static int run_forked(struct shell *sh, const struct pipeline *pl, char **first_
         return failed ? 1 : 0;
     }
 
-    /* Wait for all of them, so none is left as a zombie. The pipeline's
-     * status is the last command's, as in POSIX sh without pipefail. */
-    for (size_t i = 0; i < started; i++) {
-        int s = wait_for(sh, pids[i], pgid);
-
-        if (i == n - 1)
-            status = s;
+    if (started == 0) {
+        free(pids);
+        return 1;
     }
-    if (pgid != 0)
-        jobs_take_terminal(sh);
-    free(pids);
+    /* Wait for all of them, so none is left as a zombie, or until Ctrl+Z
+     * stops them. The status is the last command's, as in POSIX sh
+     * without pipefail. */
+    status = jobs_run_in_front(sh, sh->job_control ? pgid : 0, pids, started, pl->text);
     return failed ? 1 : status;
 }
 
@@ -793,7 +756,7 @@ int run_list(struct shell *sh, const struct list *list)
         if (ao->background) {
             /* cmd &: the parser lets only one pipeline through, and it
              * becomes a job of its own processes */
-            run_forked(sh, &ao->pipelines[0], NULL, ao->text);
+            run_forked(sh, &ao->pipelines[0], NULL, ao->pipelines[0].text);
             sh->status = 0; /* POSIX: starting a job always works */
         } else {
             run_and_or(sh, ao);

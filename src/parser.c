@@ -356,15 +356,22 @@ static enum parse_status parse_and_or(struct parser *p, struct and_or *ao)
         struct pipeline *pl;
         const struct token *tok;
         enum parse_status status;
+        size_t start;
 
         ao->pipelines = xreallocarray(ao->pipelines, ao->npipelines + 1,
                                       sizeof *ao->pipelines);
         pl = &ao->pipelines[ao->npipelines++];
         *pl = (struct pipeline){ .run_if = run_if };
+        start = peek(p)->pos;
         status = parse_pipeline(p, pl);
         if (status != PARSE_OK)
             return status;
 
+        /* The text ends where its last token ends (always a word: a
+         * command, an argument, a redirection's target or fi/done), so a
+         * comment after it isn't part of it. */
+        tok = &p->tokens->items[p->pos - 1];
+        pl->text = trimmed(p->text + start, tok->pos + strlen(token_spelling(tok)) - start);
         tok = peek(p);
         if (tok->type == TOK_AND)
             run_if = RUN_IF_OK;
@@ -395,7 +402,6 @@ static enum parse_status parse_list(struct parser *p, struct list *list, const c
             return closer ? PARSE_OK : unexpected(p, tok);
 
         struct and_or *ao;
-        size_t start = tok->pos;
 
         list->items = xreallocarray(list->items, list->nitems + 1, sizeof *list->items);
         ao = &list->items[list->nitems++];
@@ -404,11 +410,6 @@ static enum parse_status parse_list(struct parser *p, struct list *list, const c
         if (status != PARSE_OK)
             return status;
 
-        /* The text ends where its last token ends (always a word: a
-         * command, an argument, a redirection's target or fi/done), so a
-         * comment after it isn't part of it. */
-        tok = &p->tokens->items[p->pos - 1];
-        ao->text = trimmed(p->text + start, tok->pos + strlen(token_spelling(tok)) - start);
         tok = peek(p);
         if (tok->type == TOK_AMP) {
             if (ao->npipelines > 1 || ao->pipelines[0].negate) {
@@ -496,9 +497,9 @@ void list_free(struct list *list)
             for (size_t c = 0; c < pl->ncommands; c++)
                 command_free(&pl->commands[c]);
             free(pl->commands);
+            free(pl->text);
         }
         free(ao->pipelines);
-        free(ao->text);
     }
     free(list->items);
     free(list);

@@ -70,6 +70,7 @@ static void run_text(struct shell *sh, const struct list *list)
     bool explain = list->explain || sh->explain_all || sh->explaining;
 
     sh->interrupted = false;
+    sh->stopped = false;
     if (explain && explain_start(sh)) {
         sh->explaining = true;
         explain_plan(sh, list);

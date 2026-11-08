@@ -697,6 +697,58 @@ static int builtin_jobs(struct shell *sh, int argc, char **argv)
     return 0;
 }
 
+/* ---- fg and bg ---------------------------------------------------------- */
+
+/* The job spec names, or the current one with spec NULL. NULL after an
+ * error, which it prints. */
+static struct job *job_for(struct shell *sh, const char *name, const char *spec)
+{
+    char err[128];
+    struct job *job;
+
+    jobs_reap(sh);
+    job = jobs_find(sh, spec != NULL ? spec : "%+", err, sizeof err);
+    if (job == NULL) {
+        if (spec == NULL)
+            shell_error(sh, "%s: no current job", name);
+        else
+            shell_error(sh, "%s: %s", name, err);
+    }
+    return job;
+}
+
+static bool have_job_control(struct shell *sh, const char *name)
+{
+    if (!sh->job_control)
+        shell_error(sh, "%s: no job control in this shell", name);
+    return sh->job_control;
+}
+
+static int builtin_fg(struct shell *sh, int argc, char **argv)
+{
+    struct job *job;
+
+    if (!have_job_control(sh, "fg"))
+        return 1;
+    /* only one can be in front: the rest are ignored, as in bash and dash */
+    job = job_for(sh, "fg", argc >= 2 ? argv[1] : NULL);
+    return job != NULL ? jobs_fg(sh, job) : 1;
+}
+
+static int builtin_bg(struct shell *sh, int argc, char **argv)
+{
+    int status = 0;
+
+    if (!have_job_control(sh, "bg"))
+        return 1;
+    for (int i = 1; i < argc || i == 1; i++) {
+        struct job *job = job_for(sh, "bg", i < argc ? argv[i] : NULL);
+
+        status = job != NULL ? jobs_bg(sh, job) : 1;
+    }
+    return status;
+}
+
 /* ---- wait --------------------------------------------------------------- */
 
 /* A pid as a whole positive number, or 0. */
@@ -845,6 +897,8 @@ static const struct builtin builtins[] = {
       "Run the commands in file in this shell. The same as source.", true },
     { ":",      builtin_true,   ": [arg ...]",
       "Do nothing, successfully.", true },
+    { "bg",     builtin_bg,     "bg [%n ...]",
+      "Let a stopped job go on in the background.", false },
     { "break",  builtin_break,  "break [n]",
       "Leave the loop, or n loops.", true },
     { "cd",     builtin_cd,     "cd [dir | -]",
@@ -861,6 +915,8 @@ static const struct builtin builtins[] = {
       "Pass variables on to commands. With no names, list the ones passed on.", true },
     { "false",  builtin_false,  "false",
       "Fail: give status 1.", false },
+    { "fg",     builtin_fg,     "fg [%n]",
+      "Bring a job back to the front: the current one, or job n.", false },
     { "help",   builtin_help,   "help [name]",
       "List the built-ins, or show one.", false },
     { "jobs",   builtin_jobs,   "jobs",
@@ -897,6 +953,10 @@ static const struct {
     { ":",
       "Ignores its arguments and gives status 0. Handy in `while :` and as a\n"
       "placeholder.\n" },
+    { "bg",
+      "bg       let the current job go on in the background\n"
+      "bg %n    the same for job n; several can be given\n"
+      "It says `job 1 running: ...`. A job that's running already stays so.\n" },
     { "break",
       "Ends the loop it's in. break 2 also ends the loop around that one.\n"
       "Outside a loop it does nothing.\n" },
@@ -925,6 +985,12 @@ static const struct {
       "export          list the ones passed on, in a form the shell can read back\n" },
     { "false",
       "Gives status 1 and does nothing else.\n" },
+    { "fg",
+      "fg       bring the current job to the front: the one stopped last, or else\n"
+      "         the one last sent to the background\n"
+      "fg %n    bring job n to the front (%- the job before the current one)\n"
+      "It prints the command, gives it the terminal and its terminal modes back, and\n"
+      "waits for it. Ctrl+Z stops it again.\n" },
     { "help",
       "help lists every built-in in one line; help name shows more about one.\n" },
     { "jobs",
@@ -953,7 +1019,7 @@ static const struct {
       "Gives status 0 and does nothing else.\n" },
     { "wait",
       "wait         wait for every job, stopped ones too, then give status 0\n"
-      "wait %n      wait for job n and give its status (%% or %+ newest, %- the one before)\n"
+      "wait %n      wait for job n and give its status (%% or %+ the current job, %- the one before)\n"
       "wait pid     the same for one process, like $!\n"
       "In a terminal, Ctrl+C stops the waiting and the jobs it waits for (status 130).\n" },
     { "unset",

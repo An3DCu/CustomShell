@@ -16,6 +16,7 @@ struct shell {
     int status;       /* exit status of the last command: $? */
     bool exiting;     /* set by the exit built-in */
     bool interrupted; /* Ctrl+C stopped the last command */
+    bool stopped;     /* Ctrl+Z stopped a command in front: skip the rest of the line */
     pid_t pid;        /* the shell's own pid: $$, the same in every child */
     const char *name; /* $0: how acsh was started, or the script's name */
     struct strvec params; /* $1, $2, ...: the script's arguments */
@@ -38,7 +39,8 @@ struct shell {
     struct job *jobs; /* background and stopped jobs, by number */
     size_t njobs;
     size_t jobs_cap;
-    pid_t last_bg;    /* $!: the last command started in the background, 0 if none */
+    unsigned long job_turns; /* counts stops and starts in the background, for %+ */
+    pid_t last_bg;   /* $!: the last command started in the background, 0 if none */
     struct vars vars;
 };
 
