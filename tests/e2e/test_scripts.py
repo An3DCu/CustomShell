@@ -125,13 +125,6 @@ def test_folder_as_a_script(run, workdir):
     assert result.returncode == 126
 
 
-def test_script_fd_is_not_inherited(acsh, workdir):
-    write(workdir / "s.sh", "ls /proc/self/fd\n")
-    result = subprocess.run([acsh, "s.sh"], capture_output=True, text=True, cwd=workdir)
-    # ls opens one fd of its own to read the folder; the script's isn't there
-    assert sorted(result.stdout.split()) == ["0", "1", "2", "3"]
-
-
 @pytest.fixture
 def acsh_link(acsh, workdir):
     """A path to acsh without spaces: a #! line can't have one, and this

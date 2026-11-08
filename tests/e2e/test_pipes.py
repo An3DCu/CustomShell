@@ -67,12 +67,22 @@ def test_rest_of_stdin_goes_to_the_first_command(run):
     assert run(stdin="tr a-z A-Z | cat\nhello\n").stdout == "HELLO\n"
 
 
-def test_children_get_only_their_own_fds(run):
-    # The middle command should see stdin, stdout and stderr, and no pipe
-    # end that belongs to another command.
-    # (`; true` keeps sh from replacing itself with ls, which would list
-    # ls's own open folder too.)
-    result = run(stdin="echo | sh -c 'ls /proc/$$/fd; true' | cat\n")
+# A command gets stdin, stdout and stderr, and none of the fds the shell
+# keeps for itself: no pipe end of another command, not the script it reads,
+# not explain's copy of stderr or its report pipe. (`; true` keeps sh from
+# replacing itself with ls, which would list ls's own open folder too.)
+PROBE = "sh -c 'ls /proc/$$/fd; true'"
+
+
+@pytest.mark.parametrize("where", ["in a pipeline", "in a script", "explained"])
+def test_children_get_only_0_1_and_2(run, workdir, where):
+    if where == "in a pipeline":
+        result = run(stdin=f"echo | {PROBE} | cat\n")
+    elif where == "in a script":
+        (workdir / "s.sh").write_text(PROBE + "\n")
+        result = run("s.sh")
+    else:
+        result = run(stdin=f"explain {PROBE}\n")
     assert result.stdout.split() == ["0", "1", "2"]
 
 
