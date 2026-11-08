@@ -165,6 +165,22 @@ def test_no_zombies_at_the_prompt(prompt):
     assert prompt.match.group(1) == "0"
 
 
+def test_a_job_is_collected_while_the_prompt_waits(prompt):
+    # The self-pipe wakes the prompt when the job ends, so it doesn't stay a
+    # zombie until the next Enter; the notice still waits for that Enter.
+    prompt.sendline("sleep 0.2 &")
+    prompt.expect("job 1 started")
+    prompt.expect(r"acsh\$ ")
+    time.sleep(0.8)
+    states = subprocess.run(["ps", "-o", "stat=", "--ppid", str(prompt.pid)],
+                            capture_output=True, text=True).stdout.split()
+    assert not any(s.startswith("Z") for s in states)
+    with pytest.raises(pexpect.TIMEOUT):
+        prompt.expect("done", timeout=0.3)
+    prompt.sendline("")
+    prompt.expect_exact("job 1 done: sleep 0.2 (exit 0)")
+
+
 def test_explain_shows_a_job(prompt):
     prompt.sendline("explain sleep 0.1 &")
     prompt.expect("in the background \\(&\\): sleep 0.1")
