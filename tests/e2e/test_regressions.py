@@ -62,12 +62,12 @@ def test_unclosed_quote_is_an_error(run):
     assert result.returncode == 2
 
 
-def test_ctrl_c_does_not_kill_the_shell(terminal):
+def test_ctrl_c_does_not_kill_the_shell(terminal, in_front):
     # Old: Ctrl+C on a running command killed acsh itself.
     shell = terminal()
     shell.expect(r"\$ $")
-    shell.sendline("sh -c 'echo started; sleep 10'")
-    shell.expect("started\r\n")
+    shell.sendline("sleep 10")
+    in_front(shell, "sleep")
     shell.sendintr()
     shell.expect(r"\$ $", timeout=3)
     assert shell.isalive()

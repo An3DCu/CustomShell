@@ -8,6 +8,7 @@ sanitizer build.
 import os
 import shlex
 import subprocess
+import time
 from pathlib import Path
 
 import pexpect
@@ -97,3 +98,31 @@ def terminal(acsh, workdir):
     for child in children:
         if child.isalive():
             child.terminate(force=True)
+
+
+@pytest.fixture
+def in_front():
+    """Wait until a program runs in front on a terminal() shell.
+
+    Only the group in front gets Ctrl+C, so a test that presses it too
+    early can miss the program while it's still starting. Output can't
+    tell: `sh -c 'echo started; sleep 10'` prints before sleep exists.
+    """
+
+    def _wait(shell, name):
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            group = os.tcgetpgrp(shell.child_fd)
+            for stat in Path("/proc").glob("[0-9]*/stat"):
+                try:
+                    text = stat.read_text()
+                except OSError:
+                    continue  # it ended meanwhile
+                comm = text[text.index("(") + 1 : text.rindex(")")]
+                pgrp = int(text[text.rindex(")") + 2 :].split()[2])
+                if comm == name and pgrp == group:
+                    return
+            time.sleep(0.01)
+        raise AssertionError(f"{name} never ran in front")
+
+    return _wait
