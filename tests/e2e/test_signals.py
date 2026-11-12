@@ -94,6 +94,7 @@ def test_ctrl_c_stops_a_whole_pipeline(terminal, in_front):
     shell.expect(PROMPT)
     shell.sendline(f"{LONG} | cat | cat")
     in_front(shell, "sleep")
+    in_front(shell, "cat", count=2)  # the status is the last cat's
     shell.sendintr()
     shell.expect(PROMPT, timeout=3)
     assert leave(shell) == 130

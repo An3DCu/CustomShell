@@ -109,10 +109,12 @@ def in_front():
     tell: `sh -c 'echo started; sleep 10'` prints before sleep exists.
     """
 
-    def _wait(shell, name):
+    def _wait(shell, name, count=1):
+        """count: how many processes called name, for a pipeline like cat | cat."""
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline:
             group = os.tcgetpgrp(shell.child_fd)
+            found = 0
             for stat in Path("/proc").glob("[0-9]*/stat"):
                 try:
                     text = stat.read_text()
@@ -122,7 +124,9 @@ def in_front():
                 state, _, pgrp = text[text.rindex(")") + 2 :].split()[:3]
                 # not T: after fg it has the terminal a moment before SIGCONT
                 if comm == name and int(pgrp) == group and state != "T":
-                    return
+                    found += 1
+            if found >= count:
+                return
             time.sleep(0.01)
         raise AssertionError(f"{name} never ran in front")
 
