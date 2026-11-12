@@ -2,6 +2,7 @@
 
 #include <errno.h>
 #include <limits.h>
+#include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -14,6 +15,7 @@
 #include "input.h"
 #include "jobs.h"
 #include "script.h"
+#include "signames.h"
 #include "strvec.h"
 #include "vars.h"
 #include "xalloc.h"
@@ -749,6 +751,152 @@ static int builtin_bg(struct shell *sh, int argc, char **argv)
     return status;
 }
 
+/* ---- kill --------------------------------------------------------------- */
+
+/* The signal text names (TERM, SIGTERM, term, 15), or -1 after saying it
+ * has none. A number has to be one the system has; 0 sends nothing and
+ * only checks that the target is there. */
+static int signal_arg(struct shell *sh, const char *text)
+{
+    int sig = signame_parse(text);
+    struct sigaction sa;
+
+    if (sig < 0 || (sig != 0 && sigaction(sig, NULL, &sa) != 0)) {
+        shell_error(sh, "kill: %s: no such signal", text);
+        return -1;
+    }
+    return sig;
+}
+
+/* kill -l: number, name and meaning, one per line. With arguments, the
+ * name for a number (an exit status above 128 counts as its signal) or
+ * the number for a name. */
+static int list_signals(struct shell *sh, int argc, char **argv)
+{
+    int status = 0;
+
+    if (argc == 0) {
+        for (int sig = 1; sig <= signame_max(); sig++) {
+            const char *name = signame_of(sig);
+
+            if (name != NULL)
+                printf("%2d  %-6s  %s\n", sig, name, strsignal(sig));
+        }
+        return 0;
+    }
+    for (int i = 0; i < argc; i++) {
+        int sig = signame_parse(argv[i]);
+        bool number = argv[i][0] >= '0' && argv[i][0] <= '9';
+        const char *name;
+
+        if (number && sig > 128)
+            sig -= 128;
+        name = sig > 0 ? signame_of(sig) : NULL;
+        if (name == NULL) {
+            shell_error(sh, "kill: %s: no such signal", argv[i]);
+            status = 1;
+        } else if (number) {
+            printf("%s\n", name);
+        } else {
+            printf("%d\n", sig);
+        }
+    }
+    return status;
+}
+
+/* Sends sig to pid, a whole group when it's negative. TERM or HUP to a
+ * stopped target is followed by SIGCONT, as bash does: a stopped process
+ * only acts on them once it runs again. */
+static bool send_signal(struct shell *sh, const char *target, pid_t pid, int sig, bool stopped)
+{
+    const char *name = signame_of(sig);
+    const char *note = pid < 0 ? "the signal goes to the whole group" : NULL;
+
+    if (name != NULL)
+        explain_event(sh, note, "kill(%ld, SIG%s)", (long)pid, name);
+    else
+        explain_event(sh, note, "kill(%ld, %d)", (long)pid, sig);
+    if (kill(pid, sig) != 0) {
+        if (errno == ESRCH)
+            shell_error(sh, "kill: %s: no such process", target);
+        else
+            shell_error(sh, "kill: %s: %s", target, strerror(errno));
+        return false;
+    }
+    if (stopped && (sig == SIGTERM || sig == SIGHUP)) {
+        explain_event(sh, "it's stopped: wake it so it can end", "kill(%ld, SIGCONT)", (long)pid);
+        kill(pid, SIGCONT);
+    }
+    return true;
+}
+
+/* One target: %n for a job, or a pid (negative for a group). */
+static bool kill_target(struct shell *sh, const char *target, int sig)
+{
+    char err[128];
+    struct job *job;
+    long n;
+
+    if (target[0] == '%') {
+        job = jobs_find(sh, target, err, sizeof err);
+        if (job == NULL) {
+            shell_error(sh, "kill: %s", err);
+            return false;
+        }
+        if (job->pgid > 0)
+            return send_signal(sh, target, -job->pgid, sig, job->state == JOB_STOPPED);
+        /* without job control a job has no group of its own */
+        for (size_t k = 0; k < job->npids; k++) {
+            if (!job->ended[k] && !send_signal(sh, target, job->pids[k], sig, false))
+                return false;
+        }
+        return true;
+    }
+    if (!parse_number(target, &n) || n != (pid_t)n) {
+        shell_error(sh, "kill: %s: not a pid or a job", target);
+        return false;
+    }
+    job = jobs_find_pid(sh, (pid_t)n);
+    return send_signal(sh, target, (pid_t)n, sig, job != NULL && job->state == JOB_STOPPED);
+}
+
+/*
+ * kill [-SIGNAL | -s SIGNAL] [--] %n | pid ...   TERM if no signal is given
+ * kill -l [n | name ...]
+ * Every target is tried; the status is 1 if any of them failed.
+ */
+static int builtin_kill(struct shell *sh, int argc, char **argv)
+{
+    int sig = SIGTERM;
+    int status = 0;
+    int i = 1;
+
+    if (argc > 1 && strcmp(argv[1], "-l") == 0)
+        return list_signals(sh, argc - 2, argv + 2);
+    if (argc > 2 && strcmp(argv[1], "-s") == 0) {
+        sig = signal_arg(sh, argv[2]);
+        i = 3;
+    } else if (argc > 1 && argv[1][0] == '-' && argv[1][1] != '\0' && strcmp(argv[1], "-s") != 0
+               && strcmp(argv[1], "--") != 0) {
+        sig = signal_arg(sh, argv[1] + 1);
+        i = 2;
+    }
+    if (sig < 0)
+        return 1;
+    if (i < argc && strcmp(argv[i], "--") == 0)
+        i++;
+    if (i >= argc || (i == 1 && strcmp(argv[1], "-s") == 0)) { /* -s with no signal */
+        shell_error(sh, "kill: usage: kill [-SIGNAL] %%n | pid ...");
+        return 2;
+    }
+    jobs_reap(sh);
+    for (; i < argc; i++) {
+        if (!kill_target(sh, argv[i], sig))
+            status = 1;
+    }
+    return status;
+}
+
 /* ---- wait --------------------------------------------------------------- */
 
 /* A pid as a whole positive number, or 0. */
@@ -921,6 +1069,8 @@ static const struct builtin builtins[] = {
       "List the built-ins, or show one.", false },
     { "jobs",   builtin_jobs,   "jobs",
       "List the jobs: what runs in the background or is stopped.", false },
+    { "kill",   builtin_kill,   "kill [-SIGNAL] %n | pid ...",
+      "Send a signal, TERM if none is given, to jobs or processes. -l lists them.", false },
     { "pwd",    builtin_pwd,    "pwd",
       "Print the current folder.", false },
     { "read",   builtin_read,   "read [-r] [name ...]",
@@ -996,6 +1146,14 @@ static const struct {
     { "jobs",
       "One line for each job: its number, running, stopped or done, and the\n"
       "command. A job that's done is shown once more, then forgotten.\n" },
+    { "kill",
+      "kill %n          send TERM to job n, every process in it\n"
+      "kill -9 pid      send signal 9, KILL, to one process\n"
+      "kill -s HUP %n   the same with -s; -HUP, -SIGHUP and -hup work too\n"
+      "kill -- -pgid    a whole process group; 0 is the shell's own, -1 every\n"
+      "                 process you may signal\n"
+      "kill -l          list the signals; kill -l 143 names the one behind status 143\n"
+      "TERM or HUP to a stopped job also sends CONT, so it wakes up and ends.\n" },
     { "pwd",
       "Prints the full path of the current folder.\n" },
     { "read",
