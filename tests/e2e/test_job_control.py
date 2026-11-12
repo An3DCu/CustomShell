@@ -75,6 +75,14 @@ def test_terminal_modes_come_back_after_a_command(prompt):
     prompt.expect_exact("echo visible\r\nvisible\r\n")
 
 
+def test_a_loop_in_a_pipeline_leaves_job_control_to_the_shell(prompt):
+    # The loop runs in a child. It used to take the terminal back for the
+    # shell after its first sleep, got SIGTTOU, and the pipeline stopped.
+    prompt.sendline("for i in 1 2; do sleep 0.2; done | cat; echo done $?")
+    prompt.expect(r"job 1 stopped|done 0")
+    assert prompt.match.group(0) == "done 0"
+
+
 def test_explain_shows_the_group_and_the_terminal(prompt):
     prompt.sendline("explain true | cat")
     # the shell's own lines come first; the child's are copied in after them

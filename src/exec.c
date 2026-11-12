@@ -616,6 +616,11 @@ static int run_forked(struct shell *sh, const struct pipeline *pl, char **first_
                 signals_reset_in_child();
             if (bg_text != NULL)
                 background_child_setup(sh, i == 0);
+            /* The child is set up in its group now. A loop that runs in it
+             * (`for ...; done | cat`) must not start groups of its own or
+             * take the terminal back for the shell: job control stays with
+             * the shell, as in bash and dash. */
+            sh->job_control = false;
             if (hold_signals)
                 sigprocmask(SIG_SETMASK, &before, NULL); /* now ignored: let them through */
             if (prev_read >= 0 && prev_read != STDIN_FILENO) {
