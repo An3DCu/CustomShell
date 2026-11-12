@@ -190,6 +190,7 @@ int main(int argc, char **argv)
     status = script_run(&sh, &r);
     if (r.fd > STDIN_FILENO)
         close(r.fd);
+    jobs_hang_up(&sh); /* only with job control: a script's jobs keep running */
 out:
     jobs_free(&sh);
     strvec_free(&sh.params);

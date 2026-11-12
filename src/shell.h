@@ -40,6 +40,8 @@ struct shell {
     size_t njobs;
     size_t jobs_cap;
     unsigned long job_turns; /* counts stops and starts in the background, for %+ */
+    unsigned long commands;  /* pipelines run so far, so exit can tell "right after" */
+    unsigned long exit_warned; /* commands at the exit that warned about stopped jobs */
     pid_t last_bg;   /* $!: the last command started in the background, 0 if none */
     struct vars vars;
 };

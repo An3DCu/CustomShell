@@ -138,6 +138,12 @@ int script_run(struct shell *sh, struct reader *r)
                 ran = true;
             } else if (r->interactive) {
                 fputc('\n', stderr); /* Ctrl+D: end the prompt's line */
+                sh->commands++;      /* it counts as an exit */
+                if (!jobs_may_leave(sh)) {
+                    sh->status = 1;
+                    ran = true;
+                    continue;
+                }
             }
             break;
         }

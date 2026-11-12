@@ -610,6 +610,60 @@ int jobs_bg(struct shell *sh, struct job *job)
     return 0;
 }
 
+/* ---- leaving: exit, Ctrl+D, disown -------------------------------------- */
+
+bool jobs_may_leave(struct shell *sh)
+{
+    char *names = NULL;
+    size_t len = 0;
+    FILE *list;
+
+    if (!sh->job_control)
+        return true;
+    jobs_reap(sh);
+    if (sh->exit_warned != 0 && sh->exit_warned + 1 == sh->commands)
+        return true; /* warned by the command just before this one */
+    list = open_memstream(&names, &len);
+    if (list == NULL)
+        return true;
+    for (size_t i = 0; i < sh->njobs; i++) {
+        if (sh->jobs[i].state == JOB_STOPPED)
+            fprintf(list, "%sjob %d (%s)", ftell(list) > 0 ? ", " : "", sh->jobs[i].id,
+                    sh->jobs[i].text);
+    }
+    fclose(list);
+    if (len == 0) {
+        free(names);
+        return true;
+    }
+    shell_error(sh, "stopped jobs: %s", names);
+    shell_error(sh, "exit again to leave; they'll get SIGHUP");
+    free(names);
+    sh->exit_warned = sh->commands;
+    return false;
+}
+
+void jobs_hang_up(struct shell *sh)
+{
+    if (!sh->job_control)
+        return;
+    jobs_reap(sh);
+    for (size_t i = 0; i < sh->njobs; i++) {
+        struct job *job = &sh->jobs[i];
+
+        if (job->state == JOB_DONE || job->pgid <= 0)
+            continue;
+        kill(-job->pgid, SIGHUP);
+        if (job->state == JOB_STOPPED)
+            kill(-job->pgid, SIGCONT);
+    }
+}
+
+void jobs_disown(struct shell *sh, struct job *job)
+{
+    remove_job(sh, job);
+}
+
 void jobs_free(struct shell *sh)
 {
     for (size_t i = 0; i < sh->njobs; i++)

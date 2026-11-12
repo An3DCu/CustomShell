@@ -101,6 +101,20 @@ def terminal(acsh, workdir):
 
 
 @pytest.fixture
+def prompt(terminal):
+    """acsh in a terminal, at its first prompt, with a short PATH. At the end
+    it leaves with exit, so valgrind can check it for leaks."""
+    shell = terminal(env={"PATH": "/usr/bin:/bin"})
+    shell.expect(r"acsh\$ ")
+    yield shell
+    if shell.isalive():
+        shell.sendline("exit")
+        if shell.expect([pexpect.EOF, "exit again"]) == 1:
+            shell.sendline("exit")  # it had stopped jobs: the second exit leaves
+            shell.expect(pexpect.EOF)
+
+
+@pytest.fixture
 def in_front():
     """Wait until a program runs in front on a terminal() shell.
 

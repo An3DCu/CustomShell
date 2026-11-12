@@ -237,6 +237,8 @@ static int builtin_exit(struct shell *sh, int argc, char **argv)
             status = 2;
         }
     }
+    if (!jobs_may_leave(sh))
+        return 1; /* it warned about stopped jobs; the shell stays */
     sh->exiting = true;
     return status;
 }
@@ -751,6 +753,38 @@ static int builtin_bg(struct shell *sh, int argc, char **argv)
     return status;
 }
 
+/* ---- disown ------------------------------------------------------------- */
+
+static void disown_one(struct shell *sh, struct job *job)
+{
+    /* nothing in the shell can continue it once it's off the list */
+    if (job->state == JOB_STOPPED)
+        shell_error(sh, "disown: job %d is stopped; it stays stopped", job->id);
+    jobs_disown(sh, job);
+}
+
+/* disown [%n ...] or disown -a. No argument: the current job. */
+static int builtin_disown(struct shell *sh, int argc, char **argv)
+{
+    int status = 0;
+
+    if (argc == 2 && strcmp(argv[1], "-a") == 0) {
+        jobs_reap(sh);
+        while (sh->njobs > 0)
+            disown_one(sh, &sh->jobs[0]);
+        return 0;
+    }
+    for (int i = 1; i < argc || i == 1; i++) {
+        struct job *job = job_for(sh, "disown", i < argc ? argv[i] : NULL);
+
+        if (job == NULL)
+            status = 1;
+        else
+            disown_one(sh, job);
+    }
+    return status;
+}
+
 /* ---- kill --------------------------------------------------------------- */
 
 /* The signal text names (TERM, SIGTERM, term, 15), or -1 after saying it
@@ -1053,6 +1087,8 @@ static const struct builtin builtins[] = {
       "Go to dir. With no dir, go home; with -, go back to the last folder.", false },
     { "continue", builtin_continue, "continue [n]",
       "Go on with the next round of the loop, or of the nth loop out.", true },
+    { "disown", builtin_disown, "disown [-a] [%n ...]",
+      "Take jobs off the list: no notices, and no SIGHUP when acsh leaves.", false },
     { "echo",   builtin_echo,   "echo [-neE] [word ...]",
       "Print the words. -n: no newline at the end. -e: read \\n, \\t and other escapes.", false },
     { "exit",   builtin_exit,   "exit [n]",
@@ -1118,13 +1154,21 @@ static const struct {
     { "continue",
       "Skips the rest of this round of the loop and starts the next one.\n"
       "continue 2 does that for the loop around this one.\n" },
+    { "disown",
+      "disown       take the current job off the list\n"
+      "disown %n    the same for job n; several can be given\n"
+      "disown -a    every job\n"
+      "acsh forgets the job: no notice when it ends, and no SIGHUP when acsh\n"
+      "leaves, so it keeps running. A stopped job stays stopped.\n" },
     { "echo",
       "Prints the words with a space between them and a newline at the end, like\n"
       "bash. -n leaves out the newline. -e reads escapes: \\n \\t \\\\ \\0nnn \\xHH\n"
       "and the others, and \\c stops printing. -E turns them off again.\n" },
     { "exit",
       "Leaves acsh with status n (0 to 255), or with the last command's status.\n"
-      "With an argument that isn't a number it leaves with 2.\n" },
+      "With an argument that isn't a number it leaves with 2.\n"
+      "With stopped jobs it names them and stays, with status 1. An exit right\n"
+      "after that leaves, and every job gets SIGHUP. Ctrl+D works the same.\n" },
     { "explain",
       "Put it in front of a line: acsh shows the line as a tree, then every\n"
       "system call it makes for it with a note on what it does, then the status.\n"
