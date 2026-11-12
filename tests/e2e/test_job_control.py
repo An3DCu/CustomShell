@@ -8,19 +8,6 @@ $$ is sh's own pid, not acsh's.
 import re
 import time
 
-import pexpect
-import pytest
-
-
-@pytest.fixture
-def prompt(terminal):
-    shell = terminal(env={"PATH": "/usr/bin:/bin"})
-    shell.expect(r"acsh\$ ")
-    yield shell
-    if shell.isalive():
-        shell.sendline("exit")
-        shell.expect(pexpect.EOF)
-
 
 def numbers(shell, line, count):
     """Sends line and returns the first count numbers it prints."""

@@ -700,6 +700,7 @@ static int run_pipeline(struct shell *sh, const struct pipeline *pl)
     int status;
 
     sh->line = sh->unit_line + cmd->line;
+    sh->commands++;
     if (pl->ncommands > 1)
         return run_forked(sh, pl, NULL, NULL);
     if (cmd->kind != CMD_SIMPLE)

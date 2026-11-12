@@ -135,16 +135,6 @@ def test_no_zombies_in_a_script(run):
 # ---- in a terminal -------------------------------------------------------------
 
 
-@pytest.fixture
-def prompt(terminal):
-    shell = terminal(env={"PATH": "/usr/bin:/bin"})
-    shell.expect(r"acsh\$ ")
-    yield shell
-    if shell.isalive():
-        shell.sendline("exit")
-        shell.expect(pexpect.EOF)
-
-
 def test_notices_when_a_job_starts_and_ends(prompt):
     prompt.sendline("sleep 0.3 &")
     prompt.expect(r"job 1 started: sleep 0\.3 \(pid (\d+)\)")

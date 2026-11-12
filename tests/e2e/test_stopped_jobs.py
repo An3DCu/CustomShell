@@ -5,21 +5,8 @@ The other stops come from the job itself with kill -STOP, so they happen
 at a known point.
 """
 
-import pexpect
-import pytest
-
 PROMPT = r"acsh\$ "
 STOPS = "sh -c 'kill -STOP $$; echo went on'"
-
-
-@pytest.fixture
-def prompt(terminal):
-    shell = terminal(env={"PATH": "/usr/bin:/bin"})
-    shell.expect(PROMPT)
-    yield shell
-    if shell.isalive():
-        shell.sendline("exit")
-        shell.expect(pexpect.EOF)
 
 
 def say(shell, line):

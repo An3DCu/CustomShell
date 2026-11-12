@@ -142,6 +142,21 @@ int jobs_wait(struct shell *sh, struct job *job);
 int jobs_wait_pid(struct shell *sh, struct job *job, pid_t pid);
 int jobs_wait_all(struct shell *sh);
 
+/*
+ * exit or Ctrl+D with job control. With stopped jobs it names them and
+ * returns false, the first time; the attempt right after that returns
+ * true, as in bash. Without stopped jobs it's always true.
+ */
+bool jobs_may_leave(struct shell *sh);
+
+/* The interactive shell is leaving: every job gets SIGHUP, and a stopped
+ * one SIGCONT too, so it can act on it. Disowned jobs aren't in the list. */
+void jobs_hang_up(struct shell *sh);
+
+/* `disown`: forgets the job without touching it. No notice about it, and
+ * no SIGHUP when the shell leaves. */
+void jobs_disown(struct shell *sh, struct job *job);
+
 /* Forgets every job, at exit. */
 void jobs_free(struct shell *sh);
 
