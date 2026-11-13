@@ -25,6 +25,9 @@ struct builtin {
 /* The built-in with this name, or NULL. */
 const struct builtin *builtin_find(const char *name);
 
+/* The name of the i-th built-in, or NULL past the last one: for Tab. */
+const char *builtin_name(size_t i);
+
 /* Runs it with argv (NULL-terminated, argv[0] is the name) and returns its
  * exit status. Flushes stdout afterwards and reports a failed write, so
  * `echo hi > /dev/full` says so instead of failing quietly. */

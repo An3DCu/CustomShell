@@ -62,10 +62,18 @@ static ssize_t read_line(struct shell *sh, struct reader *r, bool more, char **l
 {
     if (r->fd < 0)
         return read_text_line(r, line, cap);
-    if (r->interactive && editor_usable(vars_get(&sh->vars, "TERM")))
-        return editor_read_line(r->fd, more ? "> " : prompt_tail(),
-                                more ? repaint_more : repaint_prompt, sh, &sh->history, line,
-                                cap);
+    if (r->interactive && editor_usable(vars_get(&sh->vars, "TERM"))) {
+        struct editor_config cfg = {
+            .prompt = more ? "> " : prompt_tail(),
+            .repaint = more ? repaint_more : repaint_prompt,
+            .arg = sh,
+            .hist = &sh->history,
+            .path = vars_get(&sh->vars, "PATH"),
+            .home = vars_get(&sh->vars, "HOME"),
+        };
+
+        return editor_read_line(r->fd, &cfg, line, cap);
+    }
     return input_read_line(r->fd, line, cap, r->interactive);
 }
 

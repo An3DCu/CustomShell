@@ -8,6 +8,7 @@
 #include <termios.h>
 #include <unistd.h>
 
+#include "complete.h"
 #include "history.h"
 #include "input.h"
 #include "signals.h"
@@ -29,10 +30,12 @@ enum {
     KEY_HOME,
     KEY_END,
     KEY_DELETE,
+    KEY_BACKTAB, /* Shift+Tab */
 };
 
 struct edit {
     int fd;
+    const struct editor_config *cfg;
     const char *prompt;
     size_t plen;
     char *text;  /* the line so far, without a final 0 */
@@ -48,6 +51,11 @@ struct edit {
     char *out;   /* what to write next, sent in one write() to avoid flicker */
     size_t out_len;
     size_t out_cap;
+    struct matches comp; /* Tab: the matches being gone through */
+    bool cycling;        /* Tab and Shift+Tab go through comp */
+    size_t comp_at;      /* the match shown */
+    size_t comp_start;   /* where it is in the text, and how long */
+    size_t comp_len;
 };
 
 bool editor_usable(const char *term)
@@ -189,6 +197,7 @@ static int csi_key(struct edit *e)
     case 'D': return KEY_LEFT;
     case 'H': return KEY_HOME;
     case 'F': return KEY_END;
+    case 'Z': return KEY_BACKTAB;
     case '~':
         if (n == 1 || n == 7)
             return KEY_HOME;
@@ -410,11 +419,135 @@ static size_t word_start(const struct edit *e)
     return i;
 }
 
+/* ---- Tab ---------------------------------------------------------------- */
+
+/* Puts s in place of the text from start to end, the cursor after it. */
+static void replace(struct edit *e, size_t start, size_t end, const char *s)
+{
+    cut(e, start, end);
+    for (; *s != '\0'; s++)
+        insert(e, *s);
+}
+
+/* The matches under the line, in columns down the page like ls, at most
+ * 100 of them. The line is drawn again after them. */
+static void show_list(struct edit *e)
+{
+    const struct matches *m = &e->comp;
+    size_t shown = m->len < 100 ? m->len : 100;
+    size_t widest = 0;
+    size_t cols;
+    size_t rows;
+    size_t pos = e->pos;
+
+    e->pos = e->len; /* the list goes under the whole line */
+    redraw(e);
+    e->pos = pos;
+    for (size_t i = 0; i < shown; i++) {
+        size_t w = strlen(m->items[i].show);
+
+        if (w > widest)
+            widest = w;
+    }
+    cols = columns() / (widest + 2);
+    if (cols == 0)
+        cols = 1;
+    rows = (shown + cols - 1) / cols;
+    puts_out(e, "\n");
+    for (size_t r = 0; r < rows; r++) {
+        for (size_t col = 0; col < cols; col++) {
+            size_t i = col * rows + r;
+
+            if (i >= shown)
+                break;
+            puts_out(e, m->items[i].show);
+            if (i + rows < shown) /* another column follows on this row */
+                for (size_t pad = strlen(m->items[i].show); pad < widest + 2; pad++)
+                    puts_out(e, " ");
+        }
+        puts_out(e, "\n");
+    }
+    if (m->len > shown) {
+        char more[64];
+
+        snprintf(more, sizeof more, "and %zu more\n", m->len - shown);
+        puts_out(e, more);
+    }
+    flush(e);
+    e->row = 0; /* the prompt starts again here */
+}
+
+static void stop_cycling(struct edit *e)
+{
+    complete_free(&e->comp);
+    e->cycling = false;
+}
+
+/* The next match (or with back, the one before) in place of the shown one. */
+static void cycle(struct edit *e, bool back)
+{
+    size_t n = e->comp.len;
+    const char *insert;
+
+    e->comp_at = back ? (e->comp_at + n - 1) % n : (e->comp_at + 1) % n;
+    insert = e->comp.items[e->comp_at].insert;
+    replace(e, e->comp_start, e->comp_start + e->comp_len, insert);
+    e->comp_len = strlen(insert);
+}
+
+/* A key other than Tab keeps the match shown; a file or command gets its
+ * space then, a folder doesn't. */
+static void keep_match(struct edit *e)
+{
+    if (!e->comp.items[e->comp_at].dir)
+        insert(e, ' ');
+    stop_cycling(e);
+}
+
+static void complete(struct edit *e)
+{
+    size_t start = complete_word_start(e->text, e->pos);
+    const struct match *first;
+
+    complete_find(e->text + start, e->pos - start, complete_is_command(e->text, start),
+                  e->cfg->path, e->cfg->home, &e->comp);
+    if (e->comp.len == 0) {
+        stop_cycling(e); /* nothing fits: nothing happens */
+        return;
+    }
+    first = &e->comp.items[0];
+    if (e->comp.len == 1) {
+        replace(e, start, e->pos, first->insert);
+        if (!first->dir)
+            insert(e, ' ');
+        stop_cycling(e);
+        return;
+    }
+    show_list(e);
+    replace(e, start, e->pos, first->insert);
+    e->cycling = true;
+    e->comp_at = 0;
+    e->comp_start = start;
+    e->comp_len = strlen(first->insert);
+}
+
 /* Does what key asks. Returns 1 when the line is done (Enter), -1 when it
  * isn't coming (Ctrl+C, Ctrl+D on an empty line, end of input), else 0. */
-static int handle(struct edit *e, int key, void (*repaint)(void *), void *arg)
+static int handle(struct edit *e, int key)
 {
+    if (e->cycling && key != '\t' && key != KEY_BACKTAB)
+        keep_match(e);
     switch (key) {
+    case '\t':
+        if (e->cycling)
+            cycle(e, false);
+        else
+            complete(e);
+        break;
+    case KEY_BACKTAB:
+        if (e->cycling)
+            cycle(e, true);
+        break;
     case '\r':
     case '\n':
         e->pos = e->len;
@@ -480,12 +613,12 @@ static int handle(struct edit *e, int key, void (*repaint)(void *), void *arg)
             return 0;
         key = search(e);
         redraw(e);
-        return key == 0 ? 0 : handle(e, key, repaint, arg);
+        return key == 0 ? 0 : handle(e, key);
     case CTRL_KEY('L'):
         puts_out(e, "\033[H\033[2J");
         flush(e);
-        if (repaint != NULL)
-            repaint(arg);
+        if (e->cfg->repaint != NULL)
+            e->cfg->repaint(e->cfg->arg);
         else
             fputs(e->prompt, stderr);
         fflush(stderr);
@@ -506,15 +639,15 @@ static int handle(struct edit *e, int key, void (*repaint)(void *), void *arg)
     return 0;
 }
 
-ssize_t editor_read_line(int fd, const char *prompt, void (*repaint)(void *), void *arg,
-                         const struct history *hist, char **line, size_t *cap)
+ssize_t editor_read_line(int fd, const struct editor_config *cfg, char **line, size_t *cap)
 {
     struct edit e = {
         .fd = fd,
-        .prompt = prompt,
-        .plen = strlen(prompt),
-        .hist = hist,
-        .hist_at = hist ? hist->len : 0,
+        .cfg = cfg,
+        .prompt = cfg->prompt,
+        .plen = strlen(cfg->prompt),
+        .hist = cfg->hist,
+        .hist_at = cfg->hist ? cfg->hist->len : 0,
         /* never NULL, so pointer sums like text + pos are always defined */
         .text = xmalloc(128),
         .cap = 128,
@@ -541,13 +674,14 @@ ssize_t editor_read_line(int fd, const char *prompt, void (*repaint)(void *), vo
     tcsetattr(fd, TCSADRAIN, &raw);
 
     while (done == 0)
-        done = handle(&e, next_key(&e), repaint, arg);
+        done = handle(&e, next_key(&e));
 
     saved_errno = errno;
     tcsetattr(fd, TCSADRAIN, &cooked);
     signals_unguard_terminal();
     free(e.out);
     free(e.draft);
+    complete_free(&e.comp);
     if (done < 0) {
         free(e.text);
         errno = saved_errno;
