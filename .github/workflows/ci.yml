@@ -32,6 +32,17 @@ jobs:
       # those objects and the clang job would test the gcc build.
       - run: docker run --rm acsh sh -c "make clean && make CC=${{ matrix.cc }} ${{ matrix.target }}"
 
+  fuzz:
+    name: make fuzz
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: docker build -t acsh .
+      # two minutes from the saved corpus: enough to catch a change that
+      # breaks the parser on input the corpus already reaches
+      - run: docker run --rm acsh make fuzz FUZZ_TIME=120
+
   valgrind:
     name: make test-valgrind
     runs-on: ubuntu-24.04
