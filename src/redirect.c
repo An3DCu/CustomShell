@@ -8,6 +8,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "analyzer.h"
 #include "error.h"
 #include "expand.h"
 #include "explain.h"
@@ -107,6 +108,10 @@ static int parse_fd(const char *s)
     return fd;
 }
 
+/* The fds that dup2 sets up in apply_dup and apply_file stay open for the
+ * command on purpose (analyzer.h). */
+FD_LEAK_IS_FINE_BEGIN
+
 /* 2>&1, <&3, >&- */
 static bool apply_dup(struct shell *sh, const struct redirection *r, const char *target)
 {
@@ -184,6 +189,8 @@ static bool apply_file(struct shell *sh, const struct redirection *r, const char
     }
     return true;
 }
+
+FD_LEAK_IS_FINE_END
 
 bool redir_apply(struct shell *sh, const struct command *cmd, struct redir_undo *undo)
 {

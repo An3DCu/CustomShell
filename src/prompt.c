@@ -20,6 +20,8 @@ char *prompt_folder(const char *cwd, const char *home)
         n--;
     if (strncmp(cwd, home, n) != 0)
         return xstrdup(cwd);
+    /* strncmp matched the first n bytes of cwd. cwd[n] is at worst its final 0. */
+    /* NOLINTNEXTLINE(clang-analyzer-security.ArrayBound) */
     if (cwd[n] == '\0') {
         return xstrdup("~");
     }
