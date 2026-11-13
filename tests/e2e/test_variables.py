@@ -1,9 +1,9 @@
 """Variables and expansion, checked against dash.
 
 Most tests here run the same lines in acsh and in dash (Ubuntu's /bin/sh)
-and compare what comes out. Each shell gets its own empty folder, so files
-they create don't mix. stderr isn't compared, since every shell words its
-messages differently; the acsh-only tests at the end check acsh's own.
+and compare what comes out. Each shell gets its own empty folder. Files
+they create don't mix. stderr isn't compared. Every shell words its messages
+differently. The acsh-only tests at the end check acsh's own.
 """
 
 import os

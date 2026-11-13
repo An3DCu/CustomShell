@@ -1,7 +1,7 @@
 /*
  * The file name matcher and the folder walk. The matching rules were
- * checked against dash on a folder of awkward names (see
- * tests/e2e/test_globbing.py, which compares the two shells directly).
+ * checked against dash on a folder of awkward names.
+ * tests/e2e/test_globbing.py compares the two shells directly.
  */
 #include "check.h"
 

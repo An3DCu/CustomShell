@@ -144,7 +144,7 @@ void history_add(struct history *h, const char *line)
     fd = open(h->file, O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0600);
     if (fd < 0)
         return; /* no history file is no reason to stop the shell */
-    /* One write for the line and its newline, so two windows adding at the
+    /* One write for the line and its newline. Two windows adding at the
      * same time can't mix their lines. */
     {
         size_t len = strlen(line);

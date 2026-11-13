@@ -23,7 +23,7 @@ else
 endif
 
 # C17 plus the POSIX.1-2008 functions (getline, strdup, sigaction, ...).
-# -MMD -MP write a .d file next to each object, so editing a header rebuilds
+# -MMD -MP write a .d file next to each object. Editing a header then rebuilds
 # whatever includes it.
 CPPFLAGS := -D_POSIX_C_SOURCE=200809L -Isrc -MMD -MP
 
@@ -60,7 +60,7 @@ PY   := $(VENV)/bin/python
 .PHONY: all debug test test-unit test-e2e test-debug test-valgrind fuzz fuzz-merge analyze clean
 
 # Keep the objects make builds on the way to a test binary. Without this it
-# treats them as intermediate files, deletes them, and recompiles every run.
+# treats them as intermediate files. It deletes them and recompiles every run.
 .SECONDARY:
 
 all: $(BUILD)/acsh $(TOOLS)
@@ -114,13 +114,13 @@ test-debug:
 test-valgrind: all $(VENV)/ready
 	BUILD=$(BUILD) sh tests/valgrind.sh
 
-# Fuzzing the lexer and parser with libFuzzer, which needs clang. The target
-# also has AddressSanitizer and UBSan, so any crash, bad read, undefined
-# behavior or leak stops it, and the input that did it lands in build/fuzz/.
-# The corpus in tests/fuzz/corpus is read only; what a run finds goes to
+# Fuzzing the lexer and parser with libFuzzer. It needs clang. The target
+# also has AddressSanitizer and UBSan. Any crash, bad read, undefined
+# behavior or leak stops it. The input that did it lands in build/fuzz/.
+# The corpus in tests/fuzz/corpus is read only. What a run finds goes to
 # build/fuzz/new. `make fuzz-merge` adds the inputs from there that reach a
-# branch the corpus doesn't (edges only, not how often each runs), which
-# keeps it small: the seeds and one input per new branch.
+# branch the corpus doesn't. It looks at edges only, without how often each
+# runs. That keeps the corpus small: the seeds and one input per new branch.
 FUZZ_DIR  := build/fuzz
 FUZZ_BIN  := $(FUZZ_DIR)/fuzz_parser
 FUZZ_SRC  := tests/fuzz/fuzz_parser.c src/lexer.c src/parser.c src/vars.c src/strvec.c src/xalloc.c

@@ -1,8 +1,8 @@
 """Explain mode: the plan, the system calls, and the status.
 
-pids change on every run, so before comparing, each pid is replaced by P1,
-P2, ... in the order it first shows up, and any run of spaces inside a line
-becomes two (a pid's length moves the notes' column). PATH is fixed, so the
+pids change on every run. Before comparing, each pid is replaced by P1,
+P2, ... in the order it first shows up. Any run of spaces inside a line
+becomes two (a pid's length moves the notes' column). PATH is fixed. The
 "found in PATH" notes are the same everywhere.
 """
 
@@ -29,7 +29,7 @@ def normalize(text):
 
 
 def sq(text):
-    """Runs of spaces inside each line become two; the indent stays."""
+    """Runs of spaces inside each line become two. The indent stays."""
     lines = []
     for line in text.split("\n"):
         indent = len(line) - len(line.lstrip(" "))
@@ -253,8 +253,8 @@ def test_quoted_explain_is_a_command_name(run):
 @pytest.mark.not_under_valgrind("valgrind keeps file descriptors of its own open")
 def test_shell_has_no_explain_fd_until_it_is_used(run):
     result = run(stdin="sh -c 'ls /proc/$PPID/fd'\nset -o explain\nsh -c 'ls /proc/$PPID/fd'\n")
-    # before: only 0, 1 and 2; after: the copy of stderr at 10 as well (ls
-    # sorts by name, so 10 comes before 2)
+    # Before, only 0, 1 and 2. After, the copy of stderr at 10 as well.
+    # ls sorts by name. 10 comes before 2.
     assert result.stdout.split() == ["0", "1", "2", "0", "1", "10", "2"]
 
 

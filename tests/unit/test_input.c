@@ -82,7 +82,7 @@ static void test_long_line_grows_the_buffer(void)
     memset(text, 'x', 10000);
     text[10000] = '\n';
     CHECK(pipe(fds) == 0);
-    /* 10,001 bytes fit in a Linux pipe (64 KB), so this doesn't block. */
+    /* 10,001 bytes fit in a Linux pipe (64 KB). This doesn't block. */
     CHECK_INT_EQ(10001, write(fds[1], text, 10001));
     close(fds[1]);
     CHECK_INT_EQ(10001, input_read_line(fds[0], &line, &cap, false));

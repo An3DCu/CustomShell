@@ -14,8 +14,8 @@
 #include "xalloc.h"
 
 /* Where the explanation goes is a copy of stderr at fd 10 or above. 0
- * means explain mode hasn't started: the copy is only made when it's
- * first needed, so a shell that never explains has only 0, 1 and 2 open. */
+ * means explain mode hasn't started. The copy is only made when it's first
+ * needed. A shell that never explains has only 0, 1 and 2 open. */
 bool explain_start(struct shell *sh)
 {
     int fd;
@@ -37,8 +37,8 @@ bool explain_on(const struct shell *sh)
     return sh->explaining && sh->explain_out > 0;
 }
 
-/* Everything goes out with dprintf: straight to the fd, no stdio buffer
- * that a fork could copy. */
+/* Everything goes out with dprintf, straight to the fd. There's no stdio
+ * buffer that a fork could copy. */
 static void out(const struct shell *sh, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
 
 static void out(const struct shell *sh, const char *fmt, ...)
@@ -92,8 +92,8 @@ void explain_status(struct shell *sh, int status)
 
 /* ---- the plan ------------------------------------------------------------- */
 
-/* A line of the tree. indent is what goes before the branch: spaces, and a
- * │ for every level whose list goes on below. */
+/* A line of the tree. indent is what goes before the branch. It holds
+ * spaces, with a │ for every level whose list goes on below. */
 struct tree {
     struct shell *sh;
     char indent[256];
@@ -113,7 +113,7 @@ static void node(struct tree *t, bool root, bool last, const char *fmt, ...)
     out(t->sh, "  %s%s%s\n", t->indent, root ? "" : (last ? "└─ " : "├─ "), text);
 }
 
-/* Goes one level down under a node; returns what to put back. */
+/* Goes one level down under a node. Returns what to put back. */
 static size_t descend(struct tree *t, bool root, bool last)
 {
     size_t len = strlen(t->indent);
@@ -319,8 +319,8 @@ void explain_plan(struct shell *sh, const struct list *list)
 
 /* ---- words and exec -------------------------------------------------------- */
 
-/* Words joined by spaces, with any that has a blank, or is empty, in
- * single quotes, so the fields can be told apart. */
+/* Words joined by spaces. One that has a blank, or is empty, goes in single
+ * quotes. The fields can then be told apart. */
 static void join_words(char *buf, size_t size, char *const *words, size_t n, bool quote)
 {
     size_t used = 0;
@@ -349,8 +349,8 @@ void explain_words(struct shell *sh, char *const *typed, size_t ntyped, char *co
         explain_event(sh, NULL, "expand: %s  ->  %s", before, after[0] ? after : "(nothing)");
 }
 
-/* Where execvp will find name: the first executable file in PATH. Only to
- * show it; execvp does its own search. */
+/* Where execvp will find name, the first executable file in PATH. It's
+ * only shown. execvp does its own search. */
 static bool find_in_path(const struct shell *sh, const char *name, char *buf, size_t size)
 {
     const char *path = vars_get(&sh->vars, "PATH");

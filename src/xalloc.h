@@ -6,7 +6,7 @@
 /*
  * Memory allocation that never returns NULL. If the system is out of memory,
  * acsh prints "acsh: out of memory" and exits with status 1, the way bash and
- * dash do. Callers don't need to check, so the rest of the code stays readable.
+ * dash do. Callers don't need to check. The rest of the code stays readable.
  */
 void *xmalloc(size_t size);
 void *xcalloc(size_t count, size_t size);
@@ -15,10 +15,10 @@ void *xcalloc(size_t count, size_t size);
  * that would overflow instead of quietly allocating too little. */
 void *xreallocarray(void *p, size_t count, size_t size);
 
-/* For an array that only grows and keeps no capacity of its own: makes
- * index len usable, doubling the room each time len reaches a power of two,
- * so adding n items costs about n copies, not n * n. The array must only
- * ever have grown through this. */
+/* For an array that only grows and keeps no capacity of its own. Makes
+ * index len usable. The room doubles each time len reaches a power of two.
+ * Adding n items then costs about n copies instead of n * n. The array
+ * must only ever have grown through this. */
 void *xgrow(void *p, size_t len, size_t size);
 
 char *xstrdup(const char *s);

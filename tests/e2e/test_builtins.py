@@ -109,7 +109,7 @@ def test_echo(run, line, want):
 
 
 def test_echo_without_newline_comes_out_right_away(run):
-    # Built-ins flush their output, so it can't end up after later output.
+    # Built-ins flush their output. It can't end up after later output.
     assert run(stdin="echo -n a\n/bin/echo b\necho -n c\n").stdout == "ab\nc"
 
 

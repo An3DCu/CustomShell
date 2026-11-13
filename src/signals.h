@@ -7,18 +7,18 @@
 /*
  * Ctrl+C sends SIGINT and Ctrl+\ sends SIGQUIT to every process in the
  * terminal's foreground group: the shell and whatever it's running. The
- * command should stop; an interactive shell shouldn't.
+ * command should stop. An interactive shell shouldn't.
  *
  * An interactive shell ignores SIGQUIT, as bash does. SIGINT needs more
- * care, because Ctrl+C at the prompt should drop the line and show a new
- * prompt. A handler that only interrupts read() isn't enough: a Ctrl+C that
- * comes after the prompt is printed but before read() starts would be lost,
- * and the shell would sit in read() as if nothing happened. So SIGINT stays
- * blocked in the shell, and signals_wait_for_input() waits with pselect(),
- * which unblocks it only while waiting, in one step. A Ctrl+C that comes
- * early just stays pending until then.
+ * care. Ctrl+C at the prompt should drop the line and show a new prompt. A
+ * handler that only interrupts read() isn't enough. A Ctrl+C that comes
+ * after the prompt is printed but before read() starts would be lost. The
+ * shell would sit in read() as if nothing happened. SIGINT stays blocked in
+ * the shell instead. signals_wait_for_input() waits with pselect(). It
+ * unblocks SIGINT only while waiting, in one step. A Ctrl+C that comes
+ * early stays pending until then.
  *
- * A script (not a terminal) keeps the defaults, so Ctrl+C stops it.
+ * A script (not a terminal) keeps the defaults. Ctrl+C stops it.
  */
 
 /* Sets up the shell's own signals. Call once, for an interactive shell. */
@@ -27,15 +27,15 @@ void signals_init_interactive(void);
 /* For an interactive shell's jobs: sets up the self-pipe (both ends at 10
  * or above, close-on-exec, non-blocking) and a SIGCHLD handler that only
  * writes a byte into it. While the prompt waits, a byte in the pipe means
- * a child ended or stopped: the pipe is emptied and hook(arg) is called to
- * collect it. False if the pipe can't be made. */
+ * a child ended or stopped. The pipe is emptied then. hook(arg) is called
+ * to collect the child. False if the pipe can't be made. */
 bool signals_watch_children(void (*hook)(void *), void *arg);
 
 /* For `wait` at the prompt: sleeps until the self-pipe says a child ended
  * or stopped (true) or Ctrl+C is pressed (false), with SIGINT let through
  * only while it sleeps, like the prompt. The caller then asks waitpid.
- * A child that ended before the call left a byte in the pipe, so it's
- * never missed. Only with the pipe (signals_watch_children). */
+ * A child that ended before the call left a byte in the pipe. It's never
+ * missed. Only with the pipe (signals_watch_children). */
 bool signals_sleep_until_child(void);
 
 /* Waits until fd has input (true) or Ctrl+C was pressed (false, errno
@@ -44,28 +44,29 @@ bool signals_sleep_until_child(void);
 bool signals_wait_for_input(int fd);
 
 /* Forgets a Ctrl+C that came while a command ran. The command got it and
- * stopped; it shouldn't also count as Ctrl+C at the next prompt. */
+ * stopped. It shouldn't also count as Ctrl+C at the next prompt. */
 void signals_drop_pending(void);
 
-/* True if Ctrl+C was pressed while the shell itself was busy, and forgets
- * it. A loop of built-ins like `while :; do :; done` never waits for a
- * child or for input, so it asks this on every round to stay stoppable. */
+/* True if Ctrl+C was pressed while the shell itself was busy. It forgets
+ * the Ctrl+C then. A loop of built-ins like `while :; do :; done` never
+ * waits for a child or for input. It asks this on every round to stay
+ * stoppable. */
 bool signals_take_interrupt(void);
 
 /* In a child of an interactive shell, after fork: SIGINT, SIGQUIT, SIGCHLD
- * and the job control signals (SIGTSTP, SIGTTIN, SIGTTOU) back to their
- * defaults, and SIGINT unblocked. A blocked or ignored signal stays
- * that way across exec, so without this the command couldn't be stopped. A
- * script doesn't call this: signals that were already ignored when it
- * started (under nohup, say) stay ignored for its commands, as POSIX says. */
+ * and the job control signals (SIGTSTP, SIGTTIN, SIGTTOU) go back to their
+ * defaults. SIGINT is unblocked. A blocked or ignored signal stays that way
+ * across exec. Without this the command couldn't be stopped. A script
+ * doesn't call this. Signals that were already ignored when it started
+ * (under nohup, say) stay ignored for its commands, as POSIX says. */
 void signals_reset_in_child(void);
 
 /*
  * While the line editor has the terminal in raw mode: a signal that would
  * end acsh (SIGTERM, SIGHUP, SIGSEGV, ...) first puts the terminal back to
  * modes, then ends acsh the way it would have. Only signals still at their
- * default are guarded; ignored ones stay ignored. SIGKILL can't be caught,
- * so after it the terminal stays raw (`stty sane` fixes it).
+ * default are guarded. Ignored ones stay ignored. SIGKILL can't be caught.
+ * After it the terminal stays raw (`stty sane` fixes it).
  */
 void signals_guard_terminal(int fd, const struct termios *modes);
 void signals_unguard_terminal(void);

@@ -40,7 +40,7 @@ static bool class_matches(const char *name, size_t n, unsigned char c)
 }
 
 /*
- * The bracket expression starting at p->text[start], which is a [. Returns
+ * The bracket expression starting at p->text[start], a [. Returns
  * -1 if it never closes (then the [ is an ordinary character). Otherwise
  * sets *end to just past the ] and returns 1 if c is in the set, 0 if not.
  */
@@ -77,7 +77,7 @@ static int match_bracket(const struct pattern *p, size_t start, unsigned char c,
             }
         }
         lo = (unsigned char)p->text[k];
-        /* a-z, but a - before the closing ] is just a - */
+        /* a-z. A - right before the closing ] is a plain -. */
         if (k + 2 < p->len && is_special(p, k + 1, '-') && !is_special(p, k + 2, ']')) {
             unsigned char hi = (unsigned char)p->text[k + 2];
 
@@ -97,7 +97,7 @@ static int match_bracket(const struct pattern *p, size_t start, unsigned char c,
 /*
  * The usual wildcard match with one saved * to go back to. When something
  * fails after a *, the * takes one more character and the rest is tried
- * again. Only the last * ever needs to be retried, so this is linear in
+ * again. Only the last * ever needs to be retried. This is linear in
  * practice and never recursive.
  */
 bool pattern_match(const struct pattern *p, const char *name)
@@ -132,7 +132,7 @@ bool pattern_match(const struct pattern *p, const char *name)
                 }
                 if (r == 0)
                     goto retry;
-                /* r == -1: a [ that never closes is just a [ */
+                /* r == -1: a [ that never closes is a plain [ */
             }
             if (c == *s) {
                 pi++;
@@ -213,12 +213,12 @@ static char *join(const char *prefix, const char *name, size_t n, const char *ta
 
 /*
  * Matches the part of p from start on, inside the folder prefix ("" for
- * the current folder, otherwise ending in /). One part between slashes at
- * a time: a part without magic is taken as it is, a part with magic is
- * matched against every name in the folder. The last part decides what's
- * added: a match from readdir exists already, a part taken as it is is
- * checked with lstat, so a pattern ending in /f1 only finds the folders
- * that really have an f1.
+ * the current folder, otherwise ending in /). It goes one part between
+ * slashes at a time. A part without magic is taken as it is. A part with
+ * magic is matched against every name in the folder. The last part decides
+ * what's added. A match from readdir exists already. A part taken as it is
+ * is checked with lstat. A pattern ending in /f1 only finds the folders
+ * that have an f1.
  */
 static void expand_from(const struct pattern *p, size_t start, const char *prefix,
                         struct strvec *out)

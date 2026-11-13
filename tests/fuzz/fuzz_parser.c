@@ -1,9 +1,9 @@
 /*
  * The libFuzzer target: any bytes at all, through the lexer and the parser.
  *
- * Built with AddressSanitizer and UBSan as well, so a crash, a read out of
- * bounds, undefined behavior or a leak all stop the run and leave the input
- * that did it. `make fuzz` runs it; see the Makefile.
+ * Built with AddressSanitizer and UBSan as well. A crash, a read out of
+ * bounds, undefined behavior or a leak all stop the run. The input that did
+ * it is left behind. `make fuzz` runs it (see the Makefile).
  */
 #include <stdint.h>
 #include <stdlib.h>

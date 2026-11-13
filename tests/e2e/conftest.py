@@ -1,7 +1,7 @@
 """Shared fixtures for the end-to-end tests.
 
 The tests run a built acsh. Which one comes from the ACSH environment variable
-(the Makefile sets it), so the same tests check the normal build and the
+(the Makefile sets it). The same tests check the normal build and the
 sanitizer build.
 """
 
@@ -62,8 +62,8 @@ def run(acsh, workdir):
     """Run acsh with arguments and stdin, in the test's folder.
 
     run("--version") or run(stdin="echo hi\\n"). Returns the finished
-    process (returncode, stdout, stderr). Nothing here is a terminal, so acsh
-    shows no prompt; tests that need one use the `terminal` fixture.
+    process (returncode, stdout, stderr). Nothing here is a terminal. acsh
+    shows no prompt then. Tests that need one use the `terminal` fixture.
     """
 
     def _run(*args, stdin="", env=None, unset=(), cwd=None, timeout=10):
@@ -81,9 +81,9 @@ def run(acsh, workdir):
 
 
 def _default_signals():
-    """In the child, before acsh starts: Python ignores SIGPIPE and SIGXFSZ,
-    and a child would keep that. A terminal starts a shell with them at their
-    defaults, and subprocess (the run fixture) puts them back too."""
+    """In the child, before acsh starts. Python ignores SIGPIPE and SIGXFSZ.
+    A child would keep that. A terminal starts a shell with them at their
+    defaults. subprocess (the run fixture) puts them back too."""
     signal.signal(signal.SIGPIPE, signal.SIG_DFL)
     signal.signal(signal.SIGXFSZ, signal.SIG_DFL)
 
@@ -98,9 +98,9 @@ def terminal(acsh, workdir):
     children = []
 
     def _start(env=None, unset=(), cwd=None):
-        # With no arguments, pexpect splits the command on spaces, and this
+        # With no arguments, pexpect splits the command on spaces. This
         # repo's path may have some. Quoting keeps it one word. The history
-        # file is the test's own, never the real ~/.acsh_history.
+        # file is the test's own, never the user's ~/.acsh_history.
         defaults = {"TERM": "dumb", "HISTFILE": str(workdir / ".acsh_history")}
         child = pexpect.spawn(
             shlex.quote(acsh),
@@ -122,7 +122,7 @@ def terminal(acsh, workdir):
 @pytest.fixture
 def prompt(terminal):
     """acsh in a terminal, at its first prompt, with a short PATH. At the end
-    it leaves with exit, so valgrind can check it for leaks."""
+    it leaves with exit. valgrind can then check it for leaks."""
     shell = terminal(env={"PATH": "/usr/bin:/bin"})
     shell.expect(r"acsh\$ ")
     yield shell
@@ -137,9 +137,9 @@ def prompt(terminal):
 def in_front():
     """Wait until a program runs in front on a terminal() shell.
 
-    Only the group in front gets Ctrl+C, so a test that presses it too
-    early can miss the program while it's still starting. Output can't
-    tell: `sh -c 'echo started; sleep 10'` prints before sleep exists.
+    Only the group in front gets Ctrl+C. A test that presses it too early
+    can miss the program while it's still starting. Output can't tell.
+    `sh -c 'echo started; sleep 10'` prints before sleep exists.
     """
 
     def _wait(shell, name, count=1):

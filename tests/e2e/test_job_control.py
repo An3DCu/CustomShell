@@ -1,8 +1,8 @@
 """Process groups and the terminal, in a pseudo-terminal.
 
 ps reports a process's group (pgid) and the terminal's foreground group
-(tpgid). The checks run ps from inside sh -c, with single quotes so the
-$$ is sh's own pid, not acsh's.
+(tpgid). The checks run ps from inside sh -c. Single quotes keep $$ as
+sh's own pid. acsh never expands it.
 """
 
 import re
@@ -39,7 +39,7 @@ def test_a_pipeline_shares_one_group(prompt):
 def test_the_shell_gets_the_terminal_back(prompt):
     numbers(prompt, "sh -c 'ps -o pgid= -p $$'", 1)
     pgid, tpgid = numbers(prompt, "ps -o pgid=,tpgid= -p $$", 2)
-    # While this ps runs, its own group has the terminal, not the shell's.
+    # While this ps runs, its own group has the terminal. The shell's doesn't.
     assert tpgid != pgid
     # And afterwards the shell can read from the terminal again.
     prompt.sendline("read x")
@@ -66,7 +66,7 @@ def test_terminal_modes_come_back_after_a_command(prompt):
 
 def test_a_loop_in_a_pipeline_leaves_job_control_to_the_shell(prompt):
     # The loop runs in a child. It used to take the terminal back for the
-    # shell after its first sleep, got SIGTTOU, and the pipeline stopped.
+    # shell after its first sleep. It got SIGTTOU. The pipeline stopped.
     prompt.sendline("for i in 1 2; do sleep 0.2; done | cat; echo done $?")
     prompt.expect(r"job 1 stopped|done 0")
     assert prompt.match.group(0) == "done 0"
@@ -74,7 +74,7 @@ def test_a_loop_in_a_pipeline_leaves_job_control_to_the_shell(prompt):
 
 def test_explain_shows_the_group_and_the_terminal(prompt):
     prompt.sendline("explain true | cat")
-    # the shell's own lines come first; the child's are copied in after them
+    # the shell's own lines come first. The child's are copied in after them.
     prompt.expect(r"fork\(\) = \d+")
     prompt.expect(r"tcsetpgrp\(\d+, \d+\)\s+the pipeline's group gets the terminal")
     prompt.expect(r"\] setpgid\(0, \d+\)\s+a new process group, led by this child")

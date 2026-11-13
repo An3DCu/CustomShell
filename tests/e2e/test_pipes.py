@@ -68,10 +68,10 @@ def test_rest_of_stdin_goes_to_the_first_command(run):
     assert run(stdin="tr a-z A-Z | cat\nhello\n").stdout == "HELLO\n"
 
 
-# A command gets stdin, stdout and stderr, and none of the fds the shell
-# keeps for itself: no pipe end of another command, not the script it reads,
-# not explain's copy of stderr or its report pipe. (`; true` keeps sh from
-# replacing itself with ls, which would list ls's own open folder too.)
+# A command gets stdin, stdout and stderr. None of the fds the shell keeps for
+# itself reach it. That covers the pipe ends of other commands, the script the
+# shell reads, and explain's copy of stderr and its report pipe. (`; true`
+# keeps sh from replacing itself with ls. ls would list its own open folder.)
 PROBE = "sh -c 'ls /proc/$$/fd; true'"
 
 

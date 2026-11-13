@@ -39,8 +39,8 @@ ssize_t input_read_line(int fd, char **line, size_t *cap, bool interruptible)
         if (n == 0)
             break;
         if (c == '\0') {
-            /* C strings end at a zero byte, so it would cut the line short.
-             * Dropped, as bash and dash do; input_warn_zero says so. */
+            /* C strings end at a zero byte. It would cut the line short.
+             * It's dropped, as in bash and dash. input_warn_zero says so. */
             zero_seen = true;
             continue;
         }

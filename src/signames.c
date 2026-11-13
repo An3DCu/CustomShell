@@ -8,9 +8,9 @@
 #include <stdlib.h>
 #include <strings.h>
 
-/* The numbers come from signal.h, so they're right on any system. The
- * ones after POSIX's own list are Linux names, there only if the system
- * has them. An alias is accepted but never listed. */
+/* The numbers come from signal.h. They're right on any system. The ones
+ * after POSIX's own list are Linux names, there only if the system has
+ * them. An alias is accepted. It's never listed. */
 static const struct {
     const char *name;
     int sig;

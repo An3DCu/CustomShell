@@ -4,8 +4,8 @@
 #include <stddef.h>
 
 /*
- * A growing list of strings that is always NULL-terminated, so items can
- * go straight to execvp as argv. The list owns its strings.
+ * A growing list of strings that is always NULL-terminated. items can go
+ * straight to execvp as argv. The list owns its strings.
  */
 struct strvec {
     char **items;
@@ -13,10 +13,10 @@ struct strvec {
     size_t cap;
 };
 
-/* Adds s to the end; the list takes ownership of it. */
+/* Adds s to the end. The list takes ownership of it. */
 void strvec_push(struct strvec *v, char *s);
 
-/* items, never NULL: an empty list is just { NULL }. */
+/* items, never NULL. An empty list is { NULL }. */
 char **strvec_items(struct strvec *v);
 
 /* Frees the first n strings (n <= len) and moves the rest down. */

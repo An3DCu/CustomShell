@@ -5,14 +5,15 @@
 #include "shell.h"
 
 /* Runs a parsed list, pipeline by pipeline, and returns the last exit
- * status. sh->status is updated after each pipeline, so in `false; echo $?`
+ * status. sh->status is updated after each pipeline. In `false; echo $?`
  * the echo sees 1. A pipeline's status is its last command's:
  *   0-255  the command's own exit status
  *   126    found, but it can't be run (permission denied, a directory)
  *   127    not found
  *   128+N  ended by signal N (130 for Ctrl+C, 143 for SIGTERM)
- * The list stops early after `exit`, and after Ctrl+C stopped a command,
- * as in bash: `sleep 10; echo after` prints nothing if you press Ctrl+C. */
+ * The list stops early after `exit`. It also stops after Ctrl+C stopped a
+ * command, as in bash. `sleep 10; echo after` prints nothing if you press
+ * Ctrl+C. */
 int run_list(struct shell *sh, const struct list *list);
 
 /* Turns a status from waitpid into an exit status as above. For a crash,

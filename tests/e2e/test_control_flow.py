@@ -1,8 +1,8 @@
 """if, while, until and for, break and continue, read, true, false and :.
 
 Most cases run in acsh and in dash and compare stdout and the exit status.
-acsh has no $((...)) yet, so the loops count with strings (n=${n}x) or
-read lines from a file.
+acsh has no $((...)) yet. The loops count with strings (n=${n}x) or read
+lines from a file.
 """
 
 import os
@@ -112,7 +112,7 @@ def test_for_with_the_scripts_arguments(acsh, workdir):
     for shell in filter(None, (acsh, DASH)):
         result = subprocess.run([shell, "-c", "for a; do echo \"[$a]\"; done; for a do shift; done; echo $#",
                                  "n", "x", "y z"], capture_output=True, text=True, cwd=workdir)
-        assert result.stdout == "[x]\n[y z]\n0\n"  # the loop shifted twice; its list was a copy
+        assert result.stdout == "[x]\n[y z]\n0\n"  # the loop shifted twice. Its list was a copy.
 
 
 def test_for_words_are_expanded_once(run, workdir):

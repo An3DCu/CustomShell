@@ -7,9 +7,9 @@
  * words, bytes, whatever order the options were given in. With more than one
  * file there's a "total" line. With no file, or "-", it reads stdin.
  *
- * A line is a newline character, so a last line without one isn't counted
+ * A line is a newline character. A last line without one isn't counted
  * (POSIX says so, and GNU wc agrees). A word is a run of bytes that aren't
- * space, tab, newline, \v, \f or \r. Bytes are counted, not characters.
+ * space, tab, newline, \v, \f or \r. Bytes are counted. Characters aren't.
  */
 #include <errno.h>
 #include <stdbool.h>
@@ -137,8 +137,8 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    /* Count everything first: the columns are as wide as the biggest
-     * number, total included, so they line up. */
+    /* Count everything first. The columns are as wide as the biggest
+     * number, total included. They then line up. */
     for (int i = 0; i < (nfiles > 0 ? nfiles : 1); i++) {
         const char *name = nfiles > 0 ? argv[optind + i] : "-";
         int fd = tool_open_input(name);

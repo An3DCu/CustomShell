@@ -49,10 +49,10 @@ static bool backup(struct shell *sh, struct redir_undo *undo, const struct redir
 
     for (size_t i = 0; i < undo->len; i++) {
         if (undo->items[i].fd == fd)
-            return true; /* saved already; the first original is the one to restore */
+            return true; /* saved already. The first original is the one to restore. */
     }
     /* `10>f` would overwrite one of my own copies. Move it out of the way
-     * first; fd 10 then counts as "wasn't open" for the user. */
+     * first. fd 10 then counts as "wasn't open" for the user. */
     for (size_t i = 0; i < undo->len; i++) {
         if (undo->items[i].copy == fd) {
             int moved = fcntl(fd, F_DUPFD_CLOEXEC, BACKUP_MIN_FD);
@@ -168,7 +168,7 @@ static bool apply_file(struct shell *sh, const struct redirection *r, const char
         how = "goes to";
         break;
     }
-    /* 0666 before the umask, so a new file gets the usual rw-r--r--. */
+    /* 0666 before the umask. A new file gets the usual rw-r--r--. */
     fd = open(target, flags, 0666);
     if (fd < 0) {
         explain_event(sh, strerror(errno), "open(\"%s\", %s) failed", target, flag_names);
@@ -222,7 +222,7 @@ bool redir_apply(struct shell *sh, const struct command *cmd, struct redir_undo 
 
 void redir_restore(struct shell *sh, struct redir_undo *undo)
 {
-    /* Last change first, so an fd that was changed twice ends up original. */
+    /* Last change first. An fd that was changed twice ends up original. */
     for (size_t i = undo->len; i-- > 0;) {
         const struct fd_backup *b = &undo->items[i];
         char name[16], note[64];

@@ -35,17 +35,17 @@ bool complete_is_command(const char *text, size_t start);
 /*
  * Fills m with what the word (len bytes, as typed, quotes and all) can
  * become, sorted, without repeats. command: the word is where a command
- * goes. path and home are $PATH and $HOME, either may be NULL. A word that
- * starts with ~/ looks in home, and the ~/ stays in what's inserted.
+ * goes. path and home are $PATH and $HOME. Either may be NULL. A word that
+ * starts with ~/ looks in home. The ~/ stays in what's inserted.
  */
 void complete_find(const char *word, size_t len, bool command, const char *path,
                    const char *home, struct matches *m);
 
 void complete_free(struct matches *m);
 
-/* name as it can go into a command line: as it is when it's only letters,
- * digits and . _ - / + : @ % , =, else in single quotes ('it'\''s' for a
- * quote inside). A new string. */
+/* name as it can go into a command line. It stays as it is when it's only
+ * letters, digits and . _ - / + : @ % , =. Otherwise it goes in single
+ * quotes ('it'\''s' for a quote inside). A new string. */
 char *complete_quote(const char *name);
 
 #endif

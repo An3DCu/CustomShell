@@ -11,17 +11,17 @@
  *
  *   *        any run of characters, also none
  *   ?        one character
- *   [abc]    one of these; [a-z] a range; [!a] anything but; [[:alpha:]]
- *            a class. ] right after [ or [! is a member, - at either end
- *            is a member, and a [ with no closing ] is just a [.
+ *   [abc]    one of these. [a-z] is a range, [!a] anything but a, and
+ *            [[:alpha:]] a class. ] right after [ or [! is a member. So is
+ *            - at either end. A [ with no closing ] is a plain [.
  *
- * Patterns never match a /, and a name starting with . only matches when
- * the pattern starts with a . too, so * skips hidden files. This is the
- * file name module (not glob.h, which would hide the system's <glob.h>).
+ * Patterns never match a /. A name starting with . only matches when the
+ * pattern starts with a . too. * skips hidden files that way. The module
+ * is called pattern because a glob.h would hide the system's <glob.h>.
  *
  * A pattern is bytes plus, for each byte, whether it may act as one of the
- * characters above. Expansion clears that for quoted bytes, so in "*".c
- * the * is just a *.
+ * characters above. Expansion clears that for quoted bytes. In "*".c the *
+ * is a plain *.
  */
 struct pattern {
     const char *text;
@@ -34,11 +34,11 @@ struct pattern {
 bool pattern_has_magic(const struct pattern *p);
 
 /* True if name matches all of p. Slashes and leading dots get no special
- * treatment here; that's pattern_expand's job. */
+ * treatment here. pattern_expand handles them. */
 bool pattern_match(const struct pattern *p, const char *name);
 
-/* Adds the paths that match p to out, sorted by byte value like dash, and
- * returns how many there were. Folders that can't be read count as having
+/* Adds the paths that match p to out, sorted by byte value like dash.
+ * Returns how many there were. Folders that can't be read count as having
  * no matches. */
 size_t pattern_expand(const struct pattern *p, struct strvec *out);
 

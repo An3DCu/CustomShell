@@ -1,7 +1,7 @@
 """Text that comes from data is never run as shell code.
 
 Values of variables, file names that a pattern finds, lines that read
-reads, and arguments to a script are all just text by the time a command
+reads, and arguments to a script are all plain text by the time a command
 gets them. Each test plants something that would create a file if a shell
 ever parsed it again, and checks that the file isn't there.
 """
@@ -49,8 +49,8 @@ def test_lines_from_read(run, workdir):
     result = run(stdin=script + "".join(t + "\n" for t in TRAPS))
     no_pwned(workdir)
     for t in TRAPS:
-        # once from "$line", once from $line: split into words, and echo
-        # puts them back with the same single spaces
+        # once from "$line", once from $line. The second is split into
+        # words. echo puts them back with the same single spaces.
         assert result.stdout.count(t + "\n") == 2
 
 

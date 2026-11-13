@@ -4,9 +4,9 @@
  *     cat [-n] [file ...]
  *
  * With no file, or "-", it reads stdin. -n numbers every line, the way GNU
- * cat does ("%6d" and a tab), counting on across files. Reads and writes
- * raw bytes, so a file with a 0 byte in it comes out whole. (The old acsh
- * read lines into C strings and stopped at the first 0.)
+ * cat does ("%6d" and a tab), counting on across files. It reads and writes
+ * raw bytes. A file with a 0 byte in it comes out whole. (The old acsh read
+ * lines into C strings and stopped at the first 0.)
  */
 #include <errno.h>
 #include <stdbool.h>
@@ -93,7 +93,7 @@ static int cat_fd(int fd, const char *name)
         }
         if (n == 0)
             return 0;
-        /* Flush after every read, so typing into `cat -n` shows each line
+        /* Flush after every read. Typing into `cat -n` then shows each line
          * right away instead of waiting for 64 KB. */
         if (number_lines)
             ok = put_numbered(buf, (size_t)n) && flush_out();

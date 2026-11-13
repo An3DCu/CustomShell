@@ -22,7 +22,7 @@ def stop_one(shell):
 
 
 def start_one(shell):
-    """sleep 30 in the background; returns its pid."""
+    """sleep 30 in the background. Returns its pid."""
     shell.sendline("sleep 30 &")
     shell.expect(r"started: sleep 30 \(pid (\d+)\)")
     pid = int(shell.match.group(1))
@@ -31,8 +31,8 @@ def start_one(shell):
 
 
 def gone(pid):
-    """True once pid has ended. Its parent, acsh, is gone too, so init
-    collects it and /proc/pid disappears."""
+    """True once pid has ended. Its parent, acsh, is gone too. init collects
+    it then. /proc/pid disappears."""
     for _ in range(100):
         if not os.path.exists(f"/proc/{pid}"):
             return True

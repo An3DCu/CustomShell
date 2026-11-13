@@ -16,20 +16,20 @@
  *   3. splitting    the result of an unquoted $X is cut into words on IFS
  *   4. file names   a word with an unquoted *, ? or [...] becomes the
  *                   names that match it, sorted (see pattern.h)
- *   5. quotes       removed; they only decided what 1 to 4 may touch
+ *   5. quotes       removed. They only decided what 1 to 4 may touch.
  *
- * Everything works on the word as the lexer left it, quotes included, so
- * the text of a variable is never read as shell syntax: after X='a; b',
- * `echo $X` prints "a;" and "b", and runs nothing.
+ * Everything works on the word as the lexer left it, quotes included. The
+ * text of a variable is then never read as shell syntax. After X='a; b',
+ * `echo $X` prints "a;" and "b". It runs nothing.
  *
- * $(...) and backquotes aren't supported yet and are reported as errors
+ * $(...) and backquotes aren't supported yet. They are reported as errors
  * instead of being printed as they are.
  */
 
 /* Expands a command's words and adds the resulting fields to out. A word
  * can become several fields ($X with X="a b") or none ($X with X empty).
  * When the command is `export`, arguments like NAME=value are expanded as
- * assignments instead, so `export X=$Y` keeps Y's spaces. Returns false and
+ * assignments instead. `export X=$Y` then keeps Y's spaces. Returns false and
  * writes the reason into err ("${A: missing '}'") on an error. */
 bool expand_command(struct shell *sh, char *const *words, size_t nwords,
                     struct strvec *out, char *err, size_t errlen);
@@ -39,14 +39,15 @@ bool expand_command(struct shell *sh, char *const *words, size_t nwords,
 bool expand_words(struct shell *sh, char *const *words, size_t nwords,
                   struct strvec *out, char *err, size_t errlen);
 
-/* Expands one word into one string, with no splitting and no file names:
- * for redirection targets, so `> $F` with F="a b" writes to the file "a b",
- * and `> *.log` to a file called *.log, as in dash.
+/* Expands one word into one string, with no splitting and no file names.
+ * It's for redirection targets. `> $F` with F="a b" writes to the file
+ * "a b". `> *.log` writes to a file called *.log, as in dash.
  * Returns a new string, or NULL with err set. */
 char *expand_one(struct shell *sh, const char *word, char *err, size_t errlen);
 
-/* Expands the value part of an assignment (after the =). Like expand_one,
- * and a ~ right after a : expands too, so PATH=~/bin:~/tools works. */
+/* Expands the value part of an assignment (after the =). It works like
+ * expand_one. A ~ right after a : expands too. PATH=~/bin:~/tools works
+ * that way. */
 char *expand_assignment(struct shell *sh, const char *value, char *err, size_t errlen);
 
 #endif

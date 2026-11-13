@@ -4,8 +4,8 @@
  *     mkdir [-p] dir ...
  *
  * New folders get mode 0777 before the umask (so usually rwxr-xr-x).
- * -p also makes every missing parent, and a folder that already exists
- * isn't an error.
+ * -p also makes every missing parent. With -p, a folder that already
+ * exists isn't an error.
  */
 #include <errno.h>
 #include <stdbool.h>
@@ -53,14 +53,14 @@ static bool make_with_parents(const char *path)
         return false;
     }
     memcpy(prefix, path, len + 1);
-    /* Start at 1: a leading / is the root, which always exists. */
+    /* Start at 1. A leading / is the root. The root always exists. */
     for (size_t i = 1; i < len; i++) {
         if (prefix[i] != '/' || prefix[i - 1] == '/')
             continue; /* not a separator, or the second / of a//b */
         prefix[i] = '\0';
         /* The result doesn't matter here. If this parent already exists,
-         * fine; if it can't be made (a file in the way, no permission), the
-         * next step fails too and reports it with the full name. */
+         * fine. If it can't be made (a file in the way, no permission), the
+         * next step fails too. That step reports it with the full name. */
         (void)mkdir(prefix, 0777);
         prefix[i] = '/';
     }

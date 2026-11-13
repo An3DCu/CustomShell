@@ -39,7 +39,7 @@ def test_nesting_up_to_1000_levels(run):
 
 
 # 10,000 crashed the sanitizer build before the limit. Deeper only makes the
-# input longer, and under valgrind on CI 100,000 took over 10 seconds to read.
+# input longer. Under valgrind on CI, 100,000 took over 10 seconds to read.
 @pytest.mark.parametrize("depth", [1001, 10_000])
 def test_deeper_nesting_is_an_error_not_a_crash(run, depth):
     result = run(stdin=nested(depth))
@@ -74,5 +74,5 @@ def test_a_big_paste_into_the_editor_is_quick(terminal):
     start = time.monotonic()
     shell.send("echo " + "p" * 20_000 + " | wc -c\r")  # one write, as a paste is
     shell.expect(r"\r\n20001\r\n", timeout=60)
-    # drawing the line after every key took minutes for this; once is enough
+    # drawing the line after every key took minutes for this. Once is enough.
     assert time.monotonic() - start < 30

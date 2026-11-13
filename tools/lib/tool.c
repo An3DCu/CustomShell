@@ -63,7 +63,7 @@ bool tool_write_all(int fd, const void *buf, size_t len)
     const char *p = buf;
 
     /* write() may take only part of it (a pipe that's nearly full, a
-     * signal), so keep going from where it stopped. */
+     * signal). Keep going from where it stopped. */
     while (len > 0) {
         ssize_t n = write(fd, p, len);
 

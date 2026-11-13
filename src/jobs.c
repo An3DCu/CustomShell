@@ -47,16 +47,16 @@ bool jobs_init(struct shell *sh)
     ignore(SIGTTOU);
 
     /* A group of its own. A session leader (a terminal emulator starts its
-     * shell like that) already leads its group, and setpgid says EPERM. */
+     * shell like that) already leads its group. setpgid says EPERM then. */
     if (getpgrp() != getpid() && setpgid(0, 0) != 0) {
         shell_error(sh, "can't get a process group of its own: %s", strerror(errno));
         return false;
     }
     sh->pgid = getpgrp();
 
-    /* Its own copy of the terminal, at 10 or above and close-on-exec: fd 0
-     * can be redirected for a while (`while read l; do ...; done < f`),
-     * and the terminal has to be at hand all the same. */
+    /* Its own copy of the terminal, at 10 or above and close-on-exec. fd 0
+     * can be redirected for a while (`while read l; do ...; done < f`).
+     * The terminal has to be at hand all the same. */
     fd = fcntl(STDIN_FILENO, F_DUPFD_CLOEXEC, 10);
     if (fd < 0) {
         shell_error(sh, "terminal: %s", high_fd_error(errno));
@@ -86,7 +86,7 @@ void jobs_take_terminal(struct shell *sh)
         return;
     explain_event(sh, "the shell takes the terminal back", "tcsetpgrp(%d, %ld)", sh->tty_fd,
                   (long)sh->pgid);
-    /* SIGTTOU is ignored, so a shell that isn't in front may do this. */
+    /* SIGTTOU is ignored. A shell that isn't in front may then do this. */
     tcsetpgrp(sh->tty_fd, sh->pgid);
     if (sh->have_tty_modes)
         tcsetattr(sh->tty_fd, TCSADRAIN, &sh->tty_modes);
@@ -104,8 +104,8 @@ void jobs_join_group(struct shell *sh, pid_t pgid, bool foreground)
                                  : "joins the pipeline's group",
                   "setpgid(0, %ld)", (long)pgid);
     setpgid(0, pgid);
-    /* Still with SIGTTOU ignored, as inherited from the shell: a child
-     * that isn't in front yet may take the terminal without stopping. */
+    /* Still with SIGTTOU ignored, as inherited from the shell. A child that
+     * isn't in front yet may take the terminal without stopping. */
     if (foreground)
         tcsetpgrp(sh->tty_fd, pgid);
 }
@@ -114,8 +114,8 @@ void jobs_set_group(struct shell *sh, pid_t pid, pid_t pgid)
 {
     if (!sh->job_control)
         return;
-    /* The child may have done it already, or even exec'ed (EACCES): both
-     * are fine, the group is right either way. */
+    /* The child may have done it already, or even exec'ed (EACCES). Both
+     * are fine. The group is right either way. */
     if (setpgid(pid, pgid) != 0 && errno != EACCES && errno != ESRCH)
         shell_error(sh, "setpgid: %s", strerror(errno));
 }
@@ -362,9 +362,9 @@ struct job *jobs_find(struct shell *sh, const char *spec, char *err, size_t errl
     return NULL;
 }
 
-/* Waits for one process of a job; false after Ctrl+C. At the prompt it
- * sleeps on the self-pipe and collects with jobs_reap; in a script, where
- * there's no pipe and Ctrl+C ends the script anyway, waitpid just blocks. */
+/* Waits for one process of a job. false after Ctrl+C. At the prompt it
+ * sleeps on the self-pipe and collects with jobs_reap. In a script waitpid
+ * blocks. There's no pipe there. Ctrl+C ends the script anyway. */
 static bool wait_one(struct shell *sh, struct job *job, size_t k)
 {
     while (!job->ended[k]) {
@@ -466,11 +466,11 @@ static void explain_end(struct shell *sh, pid_t pid, int wstatus)
 }
 
 /*
- * Waits for each process of the job in front, in pipeline order, so explain
- * shows them in that order. True once all have ended, with the last one's
- * status in *status; false as soon as one stops, since Ctrl+Z goes to the
- * whole group and the others stop too. Without job control nothing stops
- * on its own: a script and its commands share one group and stop together.
+ * Waits for each process of the job in front, in pipeline order. explain
+ * then shows them in that order. True once all have ended, with the last
+ * one's status in *status. False as soon as one stops. Ctrl+Z goes to the
+ * whole group. The others stop too. Without job control nothing stops
+ * on its own. A script and its commands share one group and stop together.
  */
 static bool wait_in_front(struct shell *sh, struct job *job, int *status)
 {
@@ -485,8 +485,8 @@ static bool wait_in_front(struct shell *sh, struct job *job, int *status)
 
         if (job->ended[k])
             continue;
-        /* A signal can interrupt waitpid with EINTR; the child is still
-         * there, so keep waiting for it. */
+        /* A signal can interrupt waitpid with EINTR. The child is still
+         * there. Keep waiting for it. */
         while (waitpid(pid, &wstatus, flags) < 0) {
             if (errno == EINTR)
                 continue;
@@ -518,9 +518,9 @@ static bool wait_in_front(struct shell *sh, struct job *job, int *status)
     return true;
 }
 
-/* The job in front has ended or stopped: the shell takes the terminal back.
- * A stopped job keeps its terminal modes, so a stopped editor comes back
- * as it was, and the shell gets its own back. */
+/* The job in front has ended or stopped. The shell takes the terminal back.
+ * A stopped job keeps its terminal modes. A stopped editor then comes back
+ * as it was. The shell gets its own modes back. */
 static int leave_front(struct shell *sh, struct job *job, bool ended, int status)
 {
     if (ended) {
@@ -542,8 +542,8 @@ static int leave_front(struct shell *sh, struct job *job, bool ended, int status
 int jobs_run_in_front(struct shell *sh, pid_t pgid, pid_t *pids, size_t npids,
                       const char *text)
 {
-    /* It's in the table from the start, so a stop only has to keep it
-     * there. Nothing else adds jobs while it runs. */
+    /* It's in the table from the start. A stop only has to keep it there.
+     * Nothing else adds jobs while it runs. */
     struct job *job = new_job(sh, pgid, pids, npids, text);
     int status;
     bool ended = wait_in_front(sh, job, &status);
@@ -603,7 +603,7 @@ int jobs_bg(struct shell *sh, struct job *job)
         shell_error(sh, "bg: job %d is already running", job->id);
         return 0;
     }
-    /* the notice first, so it comes before anything the job prints */
+    /* the notice first. It comes before anything the job prints. */
     fprintf(stderr, "job %d running: %s\n", job->id, job->text);
     job->turn = ++sh->job_turns;
     resume(sh, job);

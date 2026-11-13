@@ -1,6 +1,6 @@
 """The interactive shell, in a pseudo-terminal: the prompt, exit and Ctrl+D.
 
-The terminal fixture sets TERM=dumb, so the prompt has no colors here;
+The terminal fixture sets TERM=dumb. The prompt has no colors here.
 test_messages.py checks the colors.
 """
 
@@ -72,7 +72,7 @@ def test_exit_leaves_quietly(terminal):
     shell.expect(pexpect.EOF)
     shell.close()
     assert shell.exitstatus == 5
-    assert "exit 5\r\n" == shell.before  # just the typed line echoed back
+    assert "exit 5\r\n" == shell.before  # only the typed line, echoed back
 
 
 def test_ctrl_d_leaves_with_a_bare_newline(terminal):

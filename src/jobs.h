@@ -11,17 +11,17 @@
  * Job control: which processes own the terminal.
  *
  * The terminal sends Ctrl+C, Ctrl+\ and Ctrl+Z to one process group, its
- * foreground group, and only that group may read from it. So an
- * interactive shell puts every pipeline into a process group of its own,
- * gives that group the terminal while it runs, and takes the terminal back
- * when it's done. Ctrl+C then reaches the pipeline and not the shell, and a
- * pipeline can never read what you type for the shell.
+ * foreground group. Only that group may read from it. An interactive shell
+ * puts every pipeline into a process group of its own. It gives that group
+ * the terminal while it runs. It takes the terminal back when it's done.
+ * Ctrl+C then reaches the pipeline and not the shell. A pipeline can never
+ * read what you type for the shell.
  *
  *     shell    pgid 100  (the terminal is here at the prompt)
  *     ls | wc  pgid 4211 (ls is 4211, wc 4212; the terminal is here while they run)
  *
- * The group is set with setpgid() in the child and in the shell both:
- * whichever runs first, the group exists before the shell hands it the
+ * The group is set with setpgid() in the child and in the shell both.
+ * Whichever runs first, the group exists before the shell hands it the
  * terminal or a second child joins it.
  *
  * Only an interactive shell does any of this. A script's commands stay in
@@ -29,12 +29,13 @@
  */
 
 /*
- * Starts job control for an interactive shell: waits until the shell is
- * in the foreground (if it was started in the background, it stops itself
- * until it's brought to the front), moves it into a group of its own,
- * takes the terminal and remembers its modes, and ignores the signals that
- * stop a job (SIGTSTP, SIGTTIN, SIGTTOU), which the commands get back.
- * Returns false and leaves job control off if stdin isn't the terminal.
+ * Starts job control for an interactive shell. It waits until the shell is
+ * in the foreground. A shell started in the background stops itself until
+ * it's brought to the front. Then it moves the shell into a group of its
+ * own. It takes the terminal and remembers its modes. It ignores the
+ * signals that stop a job (SIGTSTP, SIGTTIN, SIGTTOU). The commands get
+ * them back. Returns false and leaves job control off if stdin isn't the
+ * terminal.
  */
 bool jobs_init(struct shell *sh);
 
@@ -46,9 +47,9 @@ void jobs_give_terminal(struct shell *sh, pid_t pgid);
  * leave the terminal raw). */
 void jobs_take_terminal(struct shell *sh);
 
-/* In a child just forked for a pipeline: joins group pgid (0 means start a
- * new one with this child's pid) and, in the foreground, takes the
- * terminal for it. */
+/* In a child just forked for a pipeline. Joins group pgid (0 means start a
+ * new one with this child's pid). In the foreground it also takes the
+ * terminal for the group. */
 void jobs_join_group(struct shell *sh, pid_t pgid, bool foreground);
 
 /* In the shell, right after forking pid: the same setpgid, from this side. */
@@ -59,9 +60,9 @@ void jobs_set_group(struct shell *sh, pid_t pid, pid_t pgid);
  *
  * The shell asks for children that ended with waitpid(-1, ..., WNOHANG)
  * at points where nothing runs in front. At the prompt that happens the
- * moment one ends: the SIGCHLD handler only writes a byte into a self-pipe,
- * and the prompt waits on the terminal and that pipe together (see
- * signals.h). In a script it happens before each command. Either way the
+ * moment one ends. The SIGCHLD handler only writes a byte into a self-pipe.
+ * The prompt waits on the terminal and that pipe together (see signals.h).
+ * In a script it happens before each command. Either way the
  * notices come just before the next prompt, as in bash.
  */
 enum job_state {
@@ -92,9 +93,9 @@ int jobs_add(struct shell *sh, pid_t pgid, pid_t *pids, size_t npids, const char
 
 /*
  * Waits for a pipeline the shell just started in front, in group pgid,
- * until it ends or Ctrl+Z stops it, and takes the terminal back. Takes
+ * until it ends or Ctrl+Z stops it. Then it takes the terminal back. Takes
  * over pids. A stopped pipeline becomes a job, `job 2 stopped: vim
- * notes.txt`, and sh->stopped is set, so the rest of the line is skipped.
+ * notes.txt`. sh->stopped is set then. The rest of the line is skipped.
  * Returns the last command's status, or 0 after a stop.
  */
 int jobs_run_in_front(struct shell *sh, pid_t pgid, pid_t *pids, size_t npids,
@@ -111,9 +112,9 @@ int jobs_bg(struct shell *sh, struct job *job);
  * waiting. */
 void jobs_reap(struct shell *sh);
 
-/* In an interactive shell: `job 1 done: sleep 30 (exit 0)` for each job
- * that ended, and takes it off the list, and `job 1 stopped: cat` for one
- * that stopped in the background. */
+/* In an interactive shell. Prints `job 1 done: sleep 30 (exit 0)` for each
+ * job that ended and takes it off the list. Prints `job 1 stopped: cat`
+ * for one that stopped in the background. */
 void jobs_notify(struct shell *sh);
 
 /* `jobs`: one line per job. Finished ones are shown once more, then
@@ -133,10 +134,10 @@ struct job *jobs_find_pid(struct shell *sh, pid_t pid);
 
 /*
  * `wait`. Each waits until the job (or the one process) has ended, stopped
- * jobs too, gives its status like a command in front (128 + N and the
- * signal's name if a signal killed it), and forgets the job once it's
- * done. At the prompt, Ctrl+C stops the waiting and sends SIGINT to the
- * jobs being waited for; they give 130 and set sh->interrupted.
+ * jobs too. It gives its status like a command in front (128 + N and the
+ * signal's name if a signal killed it). It forgets the job once it's done.
+ * At the prompt, Ctrl+C stops the waiting and sends SIGINT to the jobs
+ * being waited for. They give 130 and set sh->interrupted.
  */
 int jobs_wait(struct shell *sh, struct job *job);
 int jobs_wait_pid(struct shell *sh, struct job *job, pid_t pid);
@@ -144,13 +145,13 @@ int jobs_wait_all(struct shell *sh);
 
 /*
  * exit or Ctrl+D with job control. With stopped jobs it names them and
- * returns false, the first time; the attempt right after that returns
+ * returns false, the first time. The attempt right after that returns
  * true, as in bash. Without stopped jobs it's always true.
  */
 bool jobs_may_leave(struct shell *sh);
 
-/* The interactive shell is leaving: every job gets SIGHUP, and a stopped
- * one SIGCONT too, so it can act on it. Disowned jobs aren't in the list. */
+/* The interactive shell is leaving. Every job gets SIGHUP. A stopped one
+ * gets SIGCONT too, to act on it. Disowned jobs aren't in the list. */
 void jobs_hang_up(struct shell *sh);
 
 /* `disown`: forgets the job without touching it. No notice about it, and

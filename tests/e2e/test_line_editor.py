@@ -1,11 +1,11 @@
 """The line editor at the prompt, in a pseudo-terminal with TERM=xterm.
 
 Each key test types a line, edits it, presses Enter and checks what the
-command printed. The output is wrapped in = =, so it can't be mistaken for
-the line as the editor draws it.
+command printed. The output is wrapped in = =. It can't be mistaken for the
+line as the editor draws it.
 
-The terminal's modes are read from the test's side of the pseudo-terminal:
-on Linux, tcgetattr on the master gives the modes acsh's side has.
+The terminal's modes are read from the test's side of the pseudo-terminal.
+On Linux, tcgetattr on the master gives the modes acsh's side has.
 """
 
 import os
@@ -88,7 +88,7 @@ def test_a_long_line_wraps_and_can_be_edited(editor):
 
 
 class Screen:
-    """Just enough of an 80-column terminal to replay what the editor
+    """Enough of an 80-column terminal to replay what the editor
     writes: text with wrapping, \\r, \\n, and ESC [ n A, C, J and H."""
 
     COLS, ROWS = 80, 24
@@ -96,7 +96,7 @@ class Screen:
     def __init__(self):
         self.cells = [[" "] * self.COLS for _ in range(self.ROWS)]
         self.r = self.c = 0
-        self.at_edge = False  # a real terminal waits there before it wraps
+        self.at_edge = False  # a terminal waits there before it wraps
 
     def newline(self):
         self.at_edge = False
@@ -191,7 +191,7 @@ def test_raw_mode_only_while_a_line_is_typed(editor):
     wait_for(lambda: raw(editor), "raw mode at the prompt")
     editor.send("sleep 1\r")
     wait_for(lambda: not raw(editor), "the terminal back while a command runs")
-    editor.expect(r"\r\n" + PROMPT)  # the real prompt, not a redraw
+    editor.expect(r"\r\n" + PROMPT)  # the new prompt after the newline, never a redraw
     wait_for(lambda: raw(editor), "raw mode at the next prompt")
 
 
@@ -224,8 +224,8 @@ def not_at_default(pid, sig):
 def test_the_terminal_is_put_back_when_a_signal_ends_acsh(editor, name):
     sig = getattr(signal, name)
     # Only a signal still at its default is guarded. The sanitizers handle
-    # SIGSEGV, SIGBUS and SIGFPE themselves, and valgrind catches them all;
-    # those runs skip them. Look while a command runs, when the guard is off.
+    # SIGSEGV, SIGBUS and SIGFPE themselves. valgrind catches them all.
+    # Those runs skip them. Look while a command runs, when the guard is off.
     editor.send("sleep 0.3\r")
     wait_for(lambda: not raw(editor), "the terminal back while sleep runs")
     skip = not_at_default(editor.pid, sig)

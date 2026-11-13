@@ -2,7 +2,7 @@
 # make test-valgrind: the end-to-end tests with acsh and every tool run under
 # valgrind. It fails if a test fails, or if valgrind finds a memory error or a
 # leak in any of those processes. A process the tests kill on purpose can't
-# free its memory first, so for those only memory errors count.
+# free its memory first. For those, only memory errors count.
 set -u
 
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -14,7 +14,7 @@ mkdir -p "$work/tools" "$work/logs"
 vg="valgrind --child-silent-after-fork=yes --leak-check=full --show-leak-kinds=all"
 vg="$vg --errors-for-leak-kinds=definite,indirect --log-file=$work/logs/%q{VGNAME}.%p.log"
 
-# A small script in place of each program. It runs the real one under valgrind,
+# A small script in place of each program. It runs the program under valgrind,
 # with its name in the log file's name.
 wrap() {
     printf '#!/bin/sh\nVGNAME=%s exec %s "%s" "$@"\n' "$3" "$vg" "$1" > "$2"

@@ -5,11 +5,11 @@
 #include <stddef.h>
 
 /*
- * The shell's variables. This table is the only copy: the shell never calls
+ * The shell's variables. This table is the only copy. The shell never calls
  * setenv or getenv. Variables from the environment acsh started with are
- * imported as exported, `X=1` makes a shell variable, `export X` marks it
- * for children, and right before exec the child builds its environment
- * from the exported ones (vars_environ).
+ * imported as exported. `X=1` makes a shell variable. `export X` marks it
+ * for children. Right before exec the child builds its environment from
+ * the exported ones (vars_environ).
  */
 
 struct var {
@@ -26,7 +26,7 @@ struct vars {
 
 /* Imports every NAME=value entry of env (a NULL-terminated environ) as an
  * exported variable. Entries without a usable name are passed on to
- * children unchanged, but can't be read with $. */
+ * children unchanged. They can't be read with $. */
 void vars_init(struct vars *v, char **env);
 
 void vars_free(struct vars *v);
@@ -41,7 +41,7 @@ void vars_set(struct vars *v, const char *name, const char *value);
 /* Marks name for export, creating it without a value if needed. */
 void vars_export(struct vars *v, const char *name);
 
-/* Removes name; fine if it isn't set. */
+/* Removes name. It's fine if it isn't set. */
 void vars_unset(struct vars *v, const char *name);
 
 /* True if the variable exists, even without a value. */
@@ -54,7 +54,7 @@ char **vars_environ(const struct vars *v);
 void vars_free_environ(char **env);
 
 /* The variables sorted by name, for `export -p`. A new array of pointers
- * into the table; free only the array. */
+ * into the table. Free only the array. */
 const struct var **vars_sorted(const struct vars *v, size_t *count);
 
 /* How many bytes at the start of s form a variable name: a letter or _,

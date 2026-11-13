@@ -15,8 +15,8 @@ static bool is_blank(char c)
 }
 
 /* A backslash right before a newline joins two lines, as if neither was
- * there (POSIX 2.2.1). Only when another line follows: at the very end
- * the lexer reports it, so the shell can read the next line. */
+ * there (POSIX 2.2.1). Only when another line follows. At the very end
+ * the lexer reports it. The shell can then read the next line. */
 static bool is_line_join(const char *s)
 {
     return s[0] == '\\' && s[1] == '\n' && s[2] != '\0';
@@ -92,10 +92,10 @@ static enum token_type read_operator(const char *line, size_t *i)
 }
 
 /*
- * Finds where the word starting at line[start] ends: at a blank or an
- * operator that isn't quoted. Quotes and backslashes are stepped over, not
- * removed. Sets *quoted if the word has any. Returns false and writes the
- * reason into err if the line ends inside the word.
+ * Finds where the word starting at line[start] ends, at a blank or an
+ * operator that isn't quoted. Quotes and backslashes are stepped over. They
+ * stay in the word. Sets *quoted if the word has any. Returns false and
+ * writes the reason into err if the line ends inside the word.
  */
 static bool scan_word(const char *line, size_t start, size_t *end, bool *quoted,
                       char *err, size_t errlen)
@@ -122,7 +122,7 @@ static bool scan_word(const char *line, size_t start, size_t *end, bool *quoted,
                     snprintf(err, errlen, "unclosed double quote");
                     return false;
                 }
-                /* Step over the escaped character, so \" doesn't close the
+                /* Step over the escaped character. \" then doesn't close the
                  * quote. Whether the backslash stays is decided in expand.c. */
                 if (line[i] == '\\' && line[i + 1] != '\0')
                     i++;
@@ -130,12 +130,12 @@ static bool scan_word(const char *line, size_t start, size_t *end, bool *quoted,
             }
             i++;
         } else if (line[i] == '$' && line[i + 1] == '(') {
-            /* $(...) belongs to the word, parentheses and all, so the
-             * expansion can say it isn't supported instead of the ( being
-             * read as an operator. */
+            /* $(...) belongs to the word, parentheses and all. The
+             * expansion can then say it isn't supported. Otherwise the (
+             * would be read as an operator. */
             int depth = 0;
 
-            i++; /* past the $, so the loop starts at the ( */
+            i++; /* past the $. The loop starts at the (. */
             do {
                 if (line[i] == '\0') {
                     snprintf(err, errlen, "unclosed '$('");
@@ -149,7 +149,7 @@ static bool scan_word(const char *line, size_t start, size_t *end, bool *quoted,
             } while (depth > 0);
         } else if (line[i] == '\\') {
             *quoted = true;
-            /* getline keeps the newline, so "echo a\" arrives as "echo a\\\n". */
+            /* getline keeps the newline. "echo a\" arrives as "echo a\\\n". */
             if (line[i + 1] == '\0' || (line[i + 1] == '\n' && line[i + 2] == '\0')) {
                 snprintf(err, errlen, "line ends with a backslash");
                 return false;
@@ -221,9 +221,9 @@ enum lex_status lex(const char *line, struct token_list *out, char *err, size_t 
             return LEX_OK;
         }
         if (line[i] == '#') {
-            /* A comment, but only where a word would start: echo a#b
-             * prints a#b. It runs to the end of the line, newline not
-             * included, and a backslash in it joins nothing. */
+            /* A comment, only where a word would start. echo a#b prints
+             * a#b. It runs to the end of the line, newline not included. A
+             * backslash in it joins nothing. */
             while (line[i] != '\0' && line[i] != '\n')
                 i++;
             continue;
@@ -245,7 +245,7 @@ enum lex_status lex(const char *line, struct token_list *out, char *err, size_t 
         }
         i = end;
         /* Unquoted digits right before < or > name a file descriptor (POSIX
-         * calls them an IO_NUMBER): 2>err, but not 2 >err and not "2">err. */
+         * calls them an IO_NUMBER). 2>err has one. 2 >err and "2">err don't. */
         if (!quoted && (line[i] == '<' || line[i] == '>')
             && all_digits(line + start, end - start)) {
             int fd = digits_to_fd(line + start, end - start);

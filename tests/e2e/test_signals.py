@@ -1,8 +1,8 @@
 """Ctrl+C and Ctrl+\\: they stop the command, never the interactive shell.
 
-Most of these run acsh in a pseudo-terminal, since Ctrl+C only means
-something there: the terminal turns it into SIGINT for the whole
-foreground group. The expected behavior was recorded from bash first.
+Most of these run acsh in a pseudo-terminal. Ctrl+C only means something
+there. The terminal turns it into SIGINT for the whole foreground group.
+The expected behavior was recorded from bash first.
 """
 
 import signal
@@ -142,8 +142,8 @@ def test_ctrl_backslash_at_the_prompt_is_ignored(terminal):
 
 
 def test_commands_get_the_default_sigquit(terminal):
-    # The shell ignores SIGQUIT, and an ignored signal survives exec, so the
-    # child has to put it back itself.
+    # The shell ignores SIGQUIT. An ignored signal survives exec. The child
+    # has to put it back itself.
     shell = terminal()
     shell.expect(PROMPT)
     shell.sendline("sh -c 'kill -QUIT $$; echo survived'")
