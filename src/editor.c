@@ -50,6 +50,14 @@ bool editor_usable(const char *term)
     return term != NULL && term[0] != '\0' && strcmp(term, "dumb") != 0;
 }
 
+/* memmove that's fine with n == 0: an empty line has no text buffer yet,
+ * and passing NULL to memmove is undefined even for nothing to copy. */
+static void copy(void *to, const void *from, size_t n)
+{
+    if (n > 0)
+        memmove(to, from, n);
+}
+
 /* ---- output ------------------------------------------------------------- */
 
 static void put(struct edit *e, const char *s, size_t n)
@@ -58,7 +66,7 @@ static void put(struct edit *e, const char *s, size_t n)
         e->out_cap = (e->out_len + n) * 2;
         e->out = xreallocarray(e->out, e->out_cap, 1);
     }
-    memcpy(e->out + e->out_len, s, n);
+    copy(e->out + e->out_len, s, n);
     e->out_len += n;
 }
 
@@ -224,7 +232,7 @@ static void insert(struct edit *e, char c)
         e->cap = e->cap ? e->cap * 2 : 128;
         e->text = xreallocarray(e->text, e->cap, 1);
     }
-    memmove(e->text + e->pos + 1, e->text + e->pos, e->len - e->pos);
+    copy(e->text + e->pos + 1, e->text + e->pos, e->len - e->pos);
     e->text[e->pos++] = c;
     e->len++;
 }
@@ -249,7 +257,7 @@ static bool utf8_part(struct edit *e, unsigned char c)
 /* Removes the text from from to to (from <= to) and puts the cursor there. */
 static void cut(struct edit *e, size_t from, size_t to)
 {
-    memmove(e->text + from, e->text + to, e->len - to);
+    copy(e->text + from, e->text + to, e->len - to);
     e->len -= to - from;
     e->pos = from;
 }
@@ -356,13 +364,25 @@ static int handle(struct edit *e, int key, void (*repaint)(void *), void *arg)
 ssize_t editor_read_line(int fd, const char *prompt, void (*repaint)(void *), void *arg,
                          char **line, size_t *cap)
 {
-    struct edit e = { .fd = fd, .prompt = prompt, .plen = strlen(prompt) };
+    struct edit e = {
+        .fd = fd,
+        .prompt = prompt,
+        .plen = strlen(prompt),
+        /* never NULL, so pointer sums like text + pos are always defined */
+        .text = xmalloc(128),
+        .cap = 128,
+        .out = xmalloc(256),
+        .out_cap = 256,
+    };
     struct termios cooked, raw;
     int done = 0;
     int saved_errno;
 
-    if (tcgetattr(fd, &cooked) != 0)
+    if (tcgetattr(fd, &cooked) != 0) {
+        free(e.text);
+        free(e.out);
         return input_read_line(fd, line, cap, true);
+    }
     raw = cooked;
     raw.c_iflag &= ~(tcflag_t)(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
     raw.c_cflag |= CS8;
@@ -389,7 +409,7 @@ ssize_t editor_read_line(int fd, const char *prompt, void (*repaint)(void *), vo
         *cap = e.len + 2;
         *line = xreallocarray(*line, *cap, 1);
     }
-    memcpy(*line, e.text, e.len);
+    copy(*line, e.text, e.len);
     (*line)[e.len] = '\n';
     (*line)[e.len + 1] = '\0';
     free(e.text);
