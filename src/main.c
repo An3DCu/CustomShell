@@ -13,6 +13,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "error.h"
 #include "history.h"
 #include "jobs.h"
 #include "script.h"
@@ -105,7 +106,7 @@ static int open_script(const char *path, int *status)
     int fd = script_open(path);
 
     if (fd < 0) {
-        fprintf(stderr, "acsh: %s: %s\n", path, strerror(errno));
+        fprintf(stderr, "acsh: %s: %s\n", path, high_fd_error(errno));
         *status = errno == ENOENT ? 127 : 126;
     }
     return fd;

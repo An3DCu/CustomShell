@@ -448,6 +448,7 @@ static int read_line_into(struct shell *sh, struct read_buf *b, bool raw)
         ssize_t n = input_read_line(STDIN_FILENO, &line, &cap, sh->interactive);
         bool joined = false;
 
+        input_warn_zero(sh);
         if (n < 0) {
             if (errno == EINTR) {
                 sh->interrupted = true;
@@ -668,7 +669,7 @@ static int builtin_source(struct shell *sh, int argc, char **argv)
     }
     r.fd = script_open(path);
     if (r.fd < 0) {
-        shell_error(sh, "%s: %s: %s", argv[0], path, strerror(errno));
+        shell_error(sh, "%s: %s: %s", argv[0], path, high_fd_error(errno));
         free(path);
         return 1;
     }

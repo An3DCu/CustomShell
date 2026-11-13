@@ -24,7 +24,7 @@ bool explain_start(struct shell *sh)
         return true;
     fd = fcntl(STDERR_FILENO, F_DUPFD_CLOEXEC, 10);
     if (fd < 0) {
-        shell_error(sh, "explain: %s", strerror(errno));
+        shell_error(sh, "explain: %s", high_fd_error(errno));
         return false;
     }
     sh->explain_fd = fd;

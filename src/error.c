@@ -1,7 +1,10 @@
 #include "error.h"
 
+#include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <string.h>
+#include <sys/resource.h>
 #include <unistd.h>
 
 /* The message is put together first and written with one write(), so two
@@ -45,4 +48,18 @@ void shell_hint(const struct shell *sh, const char *fmt, ...)
     va_start(ap, fmt);
     say("  hint: ", NULL, 0, fmt, ap);
     va_end(ap);
+}
+
+const char *high_fd_error(int err)
+{
+    static char reason[96];
+    struct rlimit lim;
+
+    if ((err == EINVAL || err == EMFILE) && getrlimit(RLIMIT_NOFILE, &lim) == 0
+        && lim.rlim_cur != RLIM_INFINITY) {
+        snprintf(reason, sizeof reason, "no fd at 10 or above is free (ulimit -n is %llu)",
+                 (unsigned long long)lim.rlim_cur);
+        return reason;
+    }
+    return strerror(err);
 }

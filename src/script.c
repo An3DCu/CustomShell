@@ -164,6 +164,7 @@ int script_run(struct shell *sh, struct reader *r)
         if (n > 0 && r->interactive)
             remember(sh, line, (size_t)n);
         sh->line = r->lines; /* for errors found while reading */
+        input_warn_zero(sh);
         if (n < 0) {
             if (errno == EINTR) {
                 /* Ctrl+C at the prompt: drop what was typed, start again.
