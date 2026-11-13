@@ -25,7 +25,7 @@ def nested(depth):
 
 def test_a_long_line_and_many_arguments(run):
     line = "echo " + "x" * 1_000_000 + "\nset -- " + "a " * 100_000 + "\necho $#\n"
-    result = run(stdin=line)
+    result = run(stdin=line, timeout=30)  # about 2 s under valgrind, more on CI
     assert result.stdout == "x" * 1_000_000 + "\n100000\n"
 
 
@@ -38,7 +38,9 @@ def test_nesting_up_to_1000_levels(run):
     assert run(stdin=nested(1000)).stdout == "deep\n"
 
 
-@pytest.mark.parametrize("depth", [1001, 100_000])
+# 10,000 crashed the sanitizer build before the limit. Deeper only makes the
+# input longer, and under valgrind on CI 100,000 took over 10 seconds to read.
+@pytest.mark.parametrize("depth", [1001, 10_000])
 def test_deeper_nesting_is_an_error_not_a_crash(run, depth):
     result = run(stdin=nested(depth))
     assert result.stderr == "acsh: nested more than 1000 levels deep\n"
