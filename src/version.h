@@ -1,7 +1,7 @@
 #ifndef ACSH_VERSION_H
 #define ACSH_VERSION_H
 
-/* Bumped when a version is tagged. "-dev" between tags. */
-#define ACSH_VERSION "0.4.0"
+/* Set when a version is tagged. */
+#define ACSH_VERSION "1.0.0"
 
 #endif
