@@ -76,3 +76,12 @@ char *xgetcwd(void)
         }
     }
 }
+
+void *xgrow(void *p, size_t len, size_t size)
+{
+    /* The room is always the next power of two from len up, so it's full
+     * exactly when len is 0 or a power of two. */
+    if (len != 0 && (len & (len - 1)) != 0)
+        return p;
+    return xreallocarray(p, len ? len * 2 : 1, size);
+}

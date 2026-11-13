@@ -404,6 +404,30 @@ static void test_background(void)
     CHECK_PARSE("! a &", "syntax: only a single pipeline can run in the background (for now)");
 }
 
+/* Many words, past several doublings of the list: none lost, NULL after the
+ * last. The list used to grow by one word at a time. */
+static void test_many_words(void)
+{
+    static char text[5 * 5000 + 2];
+    struct list *list;
+    const struct command *cmd;
+    char err[128];
+    char want[8];
+    size_t n = 0;
+
+    for (int i = 0; i < 5000; i++)
+        n += (size_t)snprintf(text + n, sizeof text - n, "w%03d ", i % 1000);
+    text[n - 1] = '\n';
+    CHECK(parse_program(text, &list, err, sizeof err) == PARSE_OK);
+    cmd = &list->items[0].pipelines[0].commands[0];
+    CHECK_INT_EQ(5000, (int)cmd->nwords);
+    snprintf(want, sizeof want, "w%03d", 4999 % 1000);
+    CHECK_STR_EQ(want, cmd->words[4999]);
+    CHECK_STR_EQ("w000", cmd->words[1000]);
+    CHECK(cmd->words[5000] == NULL);
+    list_free(list);
+}
+
 /* The text a job shows in `jobs`: the pipeline as typed, without the &. */
 static void test_pipeline_text(void)
 {
@@ -547,6 +571,7 @@ int main(void)
     RUN(test_unfinished_compounds);
     RUN(test_background);
     RUN(test_pipeline_text);
+    RUN(test_many_words);
     RUN(test_not_supported_yet);
     RUN(test_unfinished_lines);
     RUN(test_lines_joined_by_a_backslash);
