@@ -1,0 +1,1 @@
+echo a >> log; echo b 2> err

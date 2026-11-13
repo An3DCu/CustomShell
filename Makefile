@@ -57,7 +57,7 @@ CHECK    := $(BUILD)/unit/check.o
 VENV := .venv
 PY   := $(VENV)/bin/python
 
-.PHONY: all debug test test-unit test-e2e test-debug test-valgrind clean
+.PHONY: all debug test test-unit test-e2e test-debug test-valgrind fuzz fuzz-merge clean
 
 # Keep the objects make builds on the way to a test binary. Without this it
 # treats them as intermediate files, deletes them, and recompiles every run.
@@ -113,6 +113,31 @@ test-debug:
 # a few minutes. CI runs it on every PR.
 test-valgrind: all $(VENV)/ready
 	BUILD=$(BUILD) sh tests/valgrind.sh
+
+# Fuzzing the lexer and parser with libFuzzer, which needs clang. The target
+# also has AddressSanitizer and UBSan, so any crash, bad read, undefined
+# behavior or leak stops it, and the input that did it lands in build/fuzz/.
+# The corpus in tests/fuzz/corpus is read only; what a run finds goes to
+# build/fuzz/new. `make fuzz-merge` adds the inputs from there that reach a
+# branch the corpus doesn't (edges only, not how often each runs), which
+# keeps it small: the seeds and one input per new branch.
+FUZZ_DIR  := build/fuzz
+FUZZ_BIN  := $(FUZZ_DIR)/fuzz_parser
+FUZZ_SRC  := tests/fuzz/fuzz_parser.c src/lexer.c src/parser.c src/vars.c src/strvec.c src/xalloc.c
+FUZZ_TIME ?= 120
+
+$(FUZZ_BIN): $(FUZZ_SRC)
+	@mkdir -p $(@D)
+	clang -D_POSIX_C_SOURCE=200809L -Isrc -std=c17 $(WARNINGS) -O1 -g \
+	    -fsanitize=fuzzer,address,undefined -fno-sanitize-recover=all -o $@ $(FUZZ_SRC)
+
+fuzz: $(FUZZ_BIN)
+	@mkdir -p $(FUZZ_DIR)/new
+	$(FUZZ_BIN) -max_total_time=$(FUZZ_TIME) -dict=tests/fuzz/shell.dict -max_len=4096 \
+	    -artifact_prefix=$(FUZZ_DIR)/ $(FUZZ_DIR)/new tests/fuzz/corpus
+
+fuzz-merge: $(FUZZ_BIN)
+	$(FUZZ_BIN) -merge=1 -use_counters=0 tests/fuzz/corpus $(FUZZ_DIR)/new
 
 clean:
 	rm -rf build
