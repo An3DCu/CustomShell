@@ -32,7 +32,7 @@ static ssize_t read_text_line(struct reader *r, char **line, size_t *cap)
         errno = 0;
         return -1;
     }
-    if (len + 1 > *cap) {
+    if (*line == NULL || len + 1 > *cap) {
         *cap = len + 1;
         *line = xreallocarray(*line, *cap, 1);
     }

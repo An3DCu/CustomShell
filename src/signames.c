@@ -12,51 +12,51 @@
  * ones after POSIX's own list are Linux names, there only if the system
  * has them. An alias is accepted but never listed. */
 static const struct {
-    int sig;
     const char *name;
+    int sig;
     bool alias;
 } names[] = {
-    { SIGHUP, "HUP", false },
-    { SIGINT, "INT", false },
-    { SIGQUIT, "QUIT", false },
-    { SIGILL, "ILL", false },
-    { SIGTRAP, "TRAP", false },
-    { SIGABRT, "ABRT", false },
-    { SIGBUS, "BUS", false },
-    { SIGFPE, "FPE", false },
-    { SIGKILL, "KILL", false },
-    { SIGUSR1, "USR1", false },
-    { SIGSEGV, "SEGV", false },
-    { SIGUSR2, "USR2", false },
-    { SIGPIPE, "PIPE", false },
-    { SIGALRM, "ALRM", false },
-    { SIGTERM, "TERM", false },
-    { SIGCHLD, "CHLD", false },
-    { SIGCONT, "CONT", false },
-    { SIGSTOP, "STOP", false },
-    { SIGTSTP, "TSTP", false },
-    { SIGTTIN, "TTIN", false },
-    { SIGTTOU, "TTOU", false },
-    { SIGURG, "URG", false },
-    { SIGXCPU, "XCPU", false },
-    { SIGXFSZ, "XFSZ", false },
-    { SIGVTALRM, "VTALRM", false },
-    { SIGPROF, "PROF", false },
-    { SIGSYS, "SYS", false },
+    { "HUP", SIGHUP, false },
+    { "INT", SIGINT, false },
+    { "QUIT", SIGQUIT, false },
+    { "ILL", SIGILL, false },
+    { "TRAP", SIGTRAP, false },
+    { "ABRT", SIGABRT, false },
+    { "BUS", SIGBUS, false },
+    { "FPE", SIGFPE, false },
+    { "KILL", SIGKILL, false },
+    { "USR1", SIGUSR1, false },
+    { "SEGV", SIGSEGV, false },
+    { "USR2", SIGUSR2, false },
+    { "PIPE", SIGPIPE, false },
+    { "ALRM", SIGALRM, false },
+    { "TERM", SIGTERM, false },
+    { "CHLD", SIGCHLD, false },
+    { "CONT", SIGCONT, false },
+    { "STOP", SIGSTOP, false },
+    { "TSTP", SIGTSTP, false },
+    { "TTIN", SIGTTIN, false },
+    { "TTOU", SIGTTOU, false },
+    { "URG", SIGURG, false },
+    { "XCPU", SIGXCPU, false },
+    { "XFSZ", SIGXFSZ, false },
+    { "VTALRM", SIGVTALRM, false },
+    { "PROF", SIGPROF, false },
+    { "SYS", SIGSYS, false },
 #ifdef SIGSTKFLT
-    { SIGSTKFLT, "STKFLT", false },
+    { "STKFLT", SIGSTKFLT, false },
 #endif
 #ifdef SIGWINCH
-    { SIGWINCH, "WINCH", false },
+    { "WINCH", SIGWINCH, false },
 #endif
 #ifdef SIGIO
-    { SIGIO, "IO", false },
+    { "IO", SIGIO, false },
 #endif
 #ifdef SIGPOLL
-    { SIGPOLL, "POLL", true },
+    { "POLL", SIGPOLL, true },
 #endif
 #ifdef SIGPWR
-    { SIGPWR, "PWR", false },
+    { "PWR", SIGPWR, false },
 #endif
 };
 

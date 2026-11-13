@@ -82,12 +82,15 @@ static char *xdup(const char *s)
 static struct entry *push(struct list *list, const char *name)
 {
     if (list->len == list->cap) {
+        struct entry *grown;
+
         list->cap = list->cap ? list->cap * 2 : 32;
-        list->items = realloc(list->items, list->cap * sizeof *list->items);
-        if (list->items == NULL) {
+        grown = realloc(list->items, list->cap * sizeof *list->items);
+        if (grown == NULL) {
             tool_error("memory", ENOMEM);
             exit(1);
         }
+        list->items = grown;
     }
     list->items[list->len] = (struct entry){ .name = xdup(name) };
     return &list->items[list->len++];

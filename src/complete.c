@@ -1,6 +1,7 @@
 #include "complete.h"
 
 #include <dirent.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -102,11 +103,10 @@ char *complete_quote(const char *name)
 
 static char *join(const char *a, const char *b, const char *c)
 {
-    char *out = xmalloc(strlen(a) + strlen(b) + strlen(c) + 1);
+    size_t size = strlen(a) + strlen(b) + strlen(c) + 1;
+    char *out = xmalloc(size);
 
-    strcpy(out, a);
-    strcat(out, b);
-    strcat(out, c);
+    snprintf(out, size, "%s%s%s", a, b, c);
     return out;
 }
 

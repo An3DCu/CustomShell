@@ -24,7 +24,7 @@ void strvec_push(struct strvec *v, char *s)
 
 char **strvec_items(struct strvec *v)
 {
-    if (v->items == NULL) {
+    if (v->cap == 0) {
         reserve(v, 0);
         v->items[0] = NULL;
     }

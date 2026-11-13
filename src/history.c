@@ -111,15 +111,16 @@ void history_settings(struct history *h, const char *file, size_t max)
 
 char *history_file(const char *histfile, const char *home)
 {
+    size_t size;
     char *path;
 
     if (histfile != NULL)
         return histfile[0] ? xstrdup(histfile) : NULL;
     if (home == NULL || home[0] == '\0')
         return NULL;
-    path = xmalloc(strlen(home) + sizeof "/.acsh_history");
-    strcpy(path, home);
-    strcat(path, "/.acsh_history");
+    size = strlen(home) + sizeof "/.acsh_history";
+    path = xmalloc(size);
+    snprintf(path, size, "%s/.acsh_history", home);
     return path;
 }
 

@@ -27,7 +27,7 @@ char *prompt_folder(const char *cwd, const char *home)
         char *out = xmalloc(strlen(cwd + n) + 2);
 
         out[0] = '~';
-        strcpy(out + 1, cwd + n);
+        memcpy(out + 1, cwd + n, strlen(cwd + n) + 1);
         return out;
     }
     return xstrdup(cwd);
@@ -52,14 +52,17 @@ void prompt_print(const struct shell *sh)
     const char *user = pw ? pw->pw_name : vars_get(&sh->vars, "USER");
     bool color = prompt_colors(vars_get(&sh->vars, "NO_COLOR"), vars_get(&sh->vars, "TERM"));
     char host[256];
+    char *dot;
     char status[32] = "";
     char *cwd = xgetcwd();
     char *folder = prompt_folder(cwd ? cwd : "?", vars_get(&sh->vars, "HOME"));
 
     if (gethostname(host, sizeof host) != 0)
-        strcpy(host, "?");
-    host[sizeof host - 1] = '\0';  /* gethostname may not end it if cut */
-    host[strcspn(host, ".")] = '\0'; /* laptop.local -> laptop, like bash */
+        memcpy(host, "?", sizeof "?");
+    host[sizeof host - 1] = '\0'; /* gethostname may not end it if cut */
+    dot = strchr(host, '.');
+    if (dot != NULL)
+        *dot = '\0'; /* laptop.local -> laptop, like bash */
     if (sh->status != 0)
         snprintf(status, sizeof status, "  %sexit %d%s", color ? RED : "", sh->status,
                  color ? RESET : "");
