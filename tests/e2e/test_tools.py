@@ -269,6 +269,7 @@ def test_tools_in_a_pipeline(run, tools, files):
     assert result.stdout == "50\n"
 
 
+@pytest.mark.not_under_valgrind("acsh finds its real tools folder, not the wrapped one")
 def test_own_tools_option_puts_them_first(run, tools):
     result = run("--own-tools", stdin="cat --help\nprintenv PATH\n")
     lines = result.stdout.splitlines()
@@ -283,6 +284,7 @@ def test_without_the_option_the_system_tools_run(run):
     assert not result.stdout.startswith("usage: cat [-n]")  # the system's help, not mine
 
 
+@pytest.mark.not_under_valgrind("the copy is the wrapper, which still runs acsh next to its tools")
 def test_own_tools_without_a_tools_folder(acsh, workdir):
     lonely = workdir / "acsh"
     lonely.write_bytes(open(acsh, "rb").read())

@@ -8,6 +8,8 @@ $$ is sh's own pid, not acsh's.
 import re
 import time
 
+import pytest
+
 
 def numbers(shell, line, count):
     """Sends line and returns the first count numbers it prints."""
@@ -100,6 +102,7 @@ def test_scripts_keep_their_commands_in_their_own_group(run):
     assert child == shell
 
 
+@pytest.mark.not_under_valgrind("valgrind keeps file descriptors of its own open")
 def test_no_terminal_copy_without_job_control(run):
     result = run(stdin="sh -c 'ls /proc/$PPID/fd'\n")
     assert result.stdout.split() == ["0", "1", "2"]
