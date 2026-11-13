@@ -5,6 +5,7 @@
 #include <sys/types.h>
 #include <termios.h>
 
+#include "history.h"
 #include "strvec.h"
 #include "vars.h"
 
@@ -43,6 +44,7 @@ struct shell {
     unsigned long commands;  /* pipelines run so far, so exit can tell "right after" */
     unsigned long exit_warned; /* commands at the exit that warned about stopped jobs */
     pid_t last_bg;   /* $!: the last command started in the background, 0 if none */
+    struct history history; /* lines typed at the prompt (history.h) */
     struct vars vars;
 };
 

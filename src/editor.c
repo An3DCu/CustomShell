@@ -8,6 +8,7 @@
 #include <termios.h>
 #include <unistd.h>
 
+#include "history.h"
 #include "input.h"
 #include "signals.h"
 #include "xalloc.h"
@@ -40,6 +41,10 @@ struct edit {
     size_t pos;  /* the cursor, as an offset into text */
     size_t row;  /* the screen row of the cursor, counted from the prompt's */
     int utf8_left; /* bytes still to come of a UTF-8 character being typed */
+    const struct history *hist; /* for Up, Down and Ctrl+R; may be NULL */
+    size_t hist_at; /* the entry shown; hist->len for the line being typed */
+    char *draft;    /* the line being typed, kept while Up shows older ones */
+    size_t draft_len;
     char *out;   /* what to write next, sent in one write() to avoid flicker */
     size_t out_len;
     size_t out_cap;
@@ -226,6 +231,136 @@ static int next_key(struct edit *e)
 
 /* ---- editing ------------------------------------------------------------ */
 
+/* Puts n bytes of s in place of the text, with the cursor at the end. */
+static void set_text(struct edit *e, const char *s, size_t n)
+{
+    if (n > e->cap) {
+        e->cap = n;
+        e->text = xreallocarray(e->text, e->cap, 1);
+    }
+    copy(e->text, s, n);
+    e->len = e->pos = n;
+}
+
+/* Up (older) or Down (newer). An entry is only ever copied, so a change
+ * made to it is gone when another one is shown, and history stays as it
+ * was. The line being typed before the first Up is the draft, shown again
+ * after the newest entry. */
+static void history_step(struct edit *e, bool older)
+{
+    const struct history *h = e->hist;
+
+    if (h == NULL || (older ? e->hist_at == 0 : e->hist_at >= h->len))
+        return;
+    if (e->hist_at == h->len) {
+        free(e->draft);
+        e->draft = xmalloc(e->len + 1);
+        copy(e->draft, e->text, e->len);
+        e->draft_len = e->len;
+    }
+    e->hist_at += older ? (size_t)-1 : 1;
+    if (e->hist_at == h->len)
+        set_text(e, e->draft, e->draft_len);
+    else
+        set_text(e, h->lines[e->hist_at], strlen(h->lines[e->hist_at]));
+}
+
+/*
+ * Ctrl+R. The query is typed into the prompt's place, `search: sle  ->
+ * sleep 30 &`, and each key looks again, from the newest entry back.
+ * Ctrl+R again goes to the next older entry that's different. Returns the
+ * key to act on once the search is over: Enter runs what's shown, Ctrl+C
+ * drops it, an arrow key keeps it for editing; Ctrl+G returns 0 and brings
+ * back the line from before the search.
+ */
+static int search(struct edit *e)
+{
+    const struct history *h = e->hist;
+    const char *prompt = e->prompt;
+    size_t plen = e->plen;
+    char *before = xmalloc(e->len + 1);
+    size_t before_len = e->len;
+    char query[256] = "";
+    size_t qlen = 0;
+    size_t at = h->len; /* the entry shown; h->len for none */
+    char *shown = NULL;
+    int key;
+
+    copy(before, e->text, e->len);
+    for (;;) {
+        size_t from = at;
+
+        free(shown);
+        if (at < h->len) {
+            shown = xmalloc(qlen + 32);
+            snprintf(shown, qlen + 32, "search: %s  ->  ", query);
+            set_text(e, h->lines[at], strlen(h->lines[at]));
+        } else {
+            shown = xmalloc(qlen + 32);
+            snprintf(shown, qlen + 32, qlen ? "search: %s  (no match)" : "search: %s", query);
+            set_text(e, "", 0);
+        }
+        e->prompt = shown;
+        e->plen = strlen(shown);
+        e->pos = 0;
+        redraw(e);
+
+        key = next_key(e);
+        if (key == CTRL_KEY('R')) {
+            from = at; /* look further back than the one shown */
+        } else if (key >= ' ' && key < 256 && key != BACKSPACE) {
+            if (qlen + 1 < sizeof query)
+                query[qlen++] = (char)key;
+            query[qlen] = '\0';
+            from = at < h->len ? at + 1 : h->len; /* the one shown may still match */
+        } else if (key == BACKSPACE || key == CTRL_KEY('H')) {
+            if (qlen > 0)
+                query[--qlen] = '\0';
+            from = h->len;
+        } else if (key == CTRL_KEY('G')) {
+            set_text(e, before, before_len);
+            key = 0;
+            break;
+        } else if (key == '\r' || key == '\n' || key == CTRL_KEY('C') || key == -1
+                   || key == KEY_LEFT || key == KEY_RIGHT || key == KEY_UP || key == KEY_DOWN
+                   || key == KEY_HOME || key == KEY_END) {
+            break;
+        } else {
+            continue; /* other keys do nothing during a search */
+        }
+        /* Look back from just before `from` for the first entry with the
+         * query in it, skipping one that reads the same as the one shown. */
+        {
+            const char *was = at < h->len ? h->lines[at] : NULL;
+            size_t i = from;
+
+            at = h->len;
+            while (i-- > 0) {
+                if (strstr(h->lines[i], query) != NULL
+                    && (key != CTRL_KEY('R') || was == NULL || strcmp(h->lines[i], was) != 0)) {
+                    at = i;
+                    break;
+                }
+            }
+            if (key == CTRL_KEY('R') && at == h->len && was != NULL)
+                at = from; /* nothing older: stay on the one shown */
+        }
+    }
+    if (at == h->len && key != '\r' && key != '\n' && key != CTRL_KEY('C'))
+        set_text(e, before, before_len); /* nothing found: the line as it was */
+    e->prompt = prompt;
+    e->plen = plen;
+    e->pos = e->len;
+    /* Up and Down go on from the entry found; the line from before the
+     * search is the one after the newest. */
+    e->hist_at = at;
+    free(e->draft);
+    e->draft = before;
+    e->draft_len = before_len;
+    free(shown);
+    return key;
+}
+
 static void insert(struct edit *e, char c)
 {
     if (e->len == e->cap) {
@@ -336,6 +471,16 @@ static int handle(struct edit *e, int key, void (*repaint)(void *), void *arg)
     case CTRL_KEY('W'):
         cut(e, word_start(e), e->pos);
         break;
+    case KEY_UP:
+    case KEY_DOWN:
+        history_step(e, key == KEY_UP);
+        break;
+    case CTRL_KEY('R'):
+        if (e->hist == NULL)
+            return 0;
+        key = search(e);
+        redraw(e);
+        return key == 0 ? 0 : handle(e, key, repaint, arg);
     case CTRL_KEY('L'):
         puts_out(e, "\033[H\033[2J");
         flush(e);
@@ -362,12 +507,14 @@ static int handle(struct edit *e, int key, void (*repaint)(void *), void *arg)
 }
 
 ssize_t editor_read_line(int fd, const char *prompt, void (*repaint)(void *), void *arg,
-                         char **line, size_t *cap)
+                         const struct history *hist, char **line, size_t *cap)
 {
     struct edit e = {
         .fd = fd,
         .prompt = prompt,
         .plen = strlen(prompt),
+        .hist = hist,
+        .hist_at = hist ? hist->len : 0,
         /* never NULL, so pointer sums like text + pos are always defined */
         .text = xmalloc(128),
         .cap = 128,
@@ -400,6 +547,7 @@ ssize_t editor_read_line(int fd, const char *prompt, void (*repaint)(void *), vo
     tcsetattr(fd, TCSADRAIN, &cooked);
     signals_unguard_terminal();
     free(e.out);
+    free(e.draft);
     if (done < 0) {
         free(e.text);
         errno = saved_errno;

@@ -5,6 +5,8 @@
 #include <stddef.h>
 #include <sys/types.h>
 
+#include "history.h"
+
 /*
  * The line editor at the prompt, without readline.
  *
@@ -21,6 +23,8 @@
  *   Ctrl+L                                    clear the screen
  *   Ctrl+C                                    drop the line
  *   Ctrl+D                                    leave on an empty line, else Delete
+ *   Up, Down                                  older and newer lines from hist
+ *   Ctrl+R                                    search back through hist
  *
  * The cursor moves by byte: a letter like č is two bytes and two steps.
  */
@@ -33,9 +37,10 @@ bool editor_usable(const char *term);
  * its newline, or -1 with errno 0 for Ctrl+D on an empty line, or -1 with
  * errno EINTR for Ctrl+C. prompt is the last line of the prompt, already
  * printed, which the editor prints again when it redraws. For Ctrl+L,
- * repaint(arg) prints the whole prompt after the screen is cleared.
+ * repaint(arg) prints the whole prompt after the screen is cleared. hist
+ * may be NULL.
  */
 ssize_t editor_read_line(int fd, const char *prompt, void (*repaint)(void *), void *arg,
-                         char **line, size_t *cap);
+                         const struct history *hist, char **line, size_t *cap);
 
 #endif

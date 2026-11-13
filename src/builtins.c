@@ -13,6 +13,7 @@
 #include "error.h"
 #include "explain.h"
 #include "input.h"
+#include "history.h"
 #include "jobs.h"
 #include "script.h"
 #include "signames.h"
@@ -688,6 +689,36 @@ static int builtin_source(struct shell *sh, int argc, char **argv)
     return status;
 }
 
+/* ---- history ------------------------------------------------------------ */
+
+/* history, history n, history -c */
+static int builtin_history(struct shell *sh, int argc, char **argv)
+{
+    struct history *h = &sh->history;
+    size_t first = 0;
+    long n;
+
+    if (argc > 2) {
+        shell_error(sh, "history: takes one argument at most");
+        return 2;
+    }
+    if (argc == 2 && strcmp(argv[1], "-c") == 0) {
+        history_clear(h);
+        return 0;
+    }
+    if (argc == 2) {
+        if (!parse_number(argv[1], &n) || n < 0) {
+            shell_error(sh, "history: %s: not a number", argv[1]);
+            return 2;
+        }
+        if ((size_t)n < h->len)
+            first = h->len - (size_t)n;
+    }
+    for (size_t i = first; i < h->len; i++)
+        printf("%5zu  %s\n", i + 1, h->lines[i]);
+    return 0;
+}
+
 /* ---- jobs --------------------------------------------------------------- */
 
 static int builtin_jobs(struct shell *sh, int argc, char **argv)
@@ -1103,6 +1134,8 @@ static const struct builtin builtins[] = {
       "Bring a job back to the front: the current one, or job n.", false },
     { "help",   builtin_help,   "help [name]",
       "List the built-ins, or show one.", false },
+    { "history", builtin_history, "history [n | -c]",
+      "List the lines typed at the prompt, numbered. -c forgets them.", false },
     { "jobs",   builtin_jobs,   "jobs",
       "List the jobs: what runs in the background or is stopped.", false },
     { "kill",   builtin_kill,   "kill [-SIGNAL] %n | pid ...",
@@ -1187,6 +1220,12 @@ static const struct {
       "waits for it. Ctrl+Z stops it again.\n" },
     { "help",
       "help lists every built-in in one line; help name shows more about one.\n" },
+    { "history",
+      "history      every line typed at the prompt, numbered, oldest first\n"
+      "history n    the last n of them\n"
+      "history -c   forget them all, in the history file too\n"
+      "The file is $HISTFILE, or ~/.acsh_history. It keeps $HISTSIZE lines, 1000\n"
+      "if that isn't set. Up and Down go through them, and Ctrl+R searches them.\n" },
     { "jobs",
       "One line for each job: its number, running, stopped or done, and the\n"
       "command. A job that's done is shown once more, then forgotten.\n" },
