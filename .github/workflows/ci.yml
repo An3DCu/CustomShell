@@ -1,0 +1,42 @@
+# Every job builds the repo's Docker image and runs the tests inside it, on the
+# same pinned Ubuntu, compilers and valgrind as a local `docker build`.
+# Actions are pinned by commit, with the version in a comment.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: ${{ matrix.cc }} make ${{ matrix.target }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        cc: [gcc, clang]
+        target: [test, test-debug]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: docker build -t acsh .
+      # The image is built with gcc. make clean first, or make would keep
+      # those objects and the clang job would test the gcc build.
+      - run: docker run --rm acsh sh -c "make clean && make CC=${{ matrix.cc }} ${{ matrix.target }}"
+
+  valgrind:
+    name: make test-valgrind
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: docker build -t acsh .
+      - run: docker run --rm acsh make test-valgrind
