@@ -1,6 +1,7 @@
 #include "editor.h"
 
 #include <errno.h>
+#include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -44,6 +45,7 @@ struct edit {
     size_t pos;  /* the cursor, as an offset into text */
     size_t row;  /* the screen row of the cursor, counted from the prompt's */
     int utf8_left; /* bytes still to come of a UTF-8 character being typed */
+    bool stale;    /* the screen is behind the text: a redraw was put off */
     const struct history *hist; /* for Up, Down and Ctrl+R; may be NULL */
     size_t hist_at; /* the entry shown; hist->len for the line being typed */
     char *draft;    /* the line being typed, kept while Up shows older ones */
@@ -149,7 +151,27 @@ static void redraw(struct edit *e)
     puts_out(e, "\r");
     move(e, at % cols, 'C');
     e->row = at / cols;
+    e->stale = false;
     flush(e);
+}
+
+/* Whether more input is already there, like the rest of a paste. */
+static bool input_waiting(const struct edit *e)
+{
+    struct pollfd p = { .fd = e->fd, .events = POLLIN };
+
+    return poll(&p, 1, 0) > 0 && (p.revents & POLLIN);
+}
+
+/* A paste arrives as many keys at once. Drawing the whole line after each
+ * one takes time that grows with the square of its length (minutes for a
+ * few pages), so while more keys are waiting, the drawing waits too. */
+static void redraw_when_idle(struct edit *e)
+{
+    if (input_waiting(e))
+        e->stale = true;
+    else
+        redraw(e);
 }
 
 /* ---- keys --------------------------------------------------------------- */
@@ -635,7 +657,7 @@ static int handle(struct edit *e, int key)
         if (utf8_part(e, (unsigned char)key))
             return 0; /* half a letter would show as junk: wait for the rest */
     }
-    redraw(e);
+    redraw_when_idle(e);
     return 0;
 }
 
@@ -673,8 +695,11 @@ ssize_t editor_read_line(int fd, const struct editor_config *cfg, char **line, s
     signals_guard_terminal(fd, &cooked);
     tcsetattr(fd, TCSADRAIN, &raw);
 
-    while (done == 0)
+    while (done == 0) {
+        if (e.stale && !input_waiting(&e))
+            redraw(&e); /* the paste is over, or a key ended it without a redraw */
         done = handle(&e, next_key(&e));
+    }
 
     saved_errno = errno;
     tcsetattr(fd, TCSADRAIN, &cooked);
