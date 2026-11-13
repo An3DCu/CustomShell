@@ -91,10 +91,10 @@ docker run --rm acsh make test
 
 ### On Linux or WSL
 
-You need gcc or clang, make, and Python 3 with venv for the tests. On Ubuntu:
+You need git, gcc or clang, make, and Python 3 with venv for the tests. On Ubuntu:
 
 ```bash
-sudo apt install build-essential clang python3-venv
+sudo apt install build-essential clang git python3-venv
 git clone https://github.com/An3DCu/CustomShell.git
 cd CustomShell
 make
