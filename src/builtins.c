@@ -1329,6 +1329,11 @@ const struct builtin *builtin_find(const char *name)
     return NULL;
 }
 
+const char *builtin_name(size_t i)
+{
+    return i < NBUILTINS ? builtins[i].name : NULL;
+}
+
 int builtin_run(struct shell *sh, const struct builtin *b, char **argv)
 {
     int argc = 0;
