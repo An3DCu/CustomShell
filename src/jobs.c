@@ -59,7 +59,7 @@ bool jobs_init(struct shell *sh)
      * and the terminal has to be at hand all the same. */
     fd = fcntl(STDIN_FILENO, F_DUPFD_CLOEXEC, 10);
     if (fd < 0) {
-        shell_error(sh, "terminal: %s", strerror(errno));
+        shell_error(sh, "terminal: %s", high_fd_error(errno));
         return false;
     }
     sh->tty_fd = fd;
@@ -67,7 +67,7 @@ bool jobs_init(struct shell *sh)
     sh->have_tty_modes = tcgetattr(fd, &sh->tty_modes) == 0;
     sh->job_control = true;
     if (!signals_watch_children(collect, sh))
-        shell_error(sh, "jobs: can't watch for children: %s", strerror(errno));
+        shell_error(sh, "jobs: can't watch for children: %s", high_fd_error(errno));
     return true;
 }
 

@@ -28,4 +28,12 @@ void shell_error(const struct shell *sh, const char *fmt, ...)
 void shell_hint(const struct shell *sh, const char *fmt, ...)
     __attribute__((format(printf, 2, 3)));
 
+/*
+ * Why moving an fd to 10 or above failed (errno err from fcntl F_DUPFD).
+ * The shell keeps its own fds there, away from the 0 to 9 people use, and
+ * a low `ulimit -n` can leave no room: then it says so, with the limit,
+ * instead of "Invalid argument". Otherwise strerror(err).
+ */
+const char *high_fd_error(int err);
+
 #endif

@@ -20,4 +20,10 @@
  */
 ssize_t input_read_line(int fd, char **line, size_t *cap, bool interruptible);
 
+/* A zero byte is left out of the line, as bash and dash do, since it would
+ * end the C string early. Call this after reading a line: the first time
+ * anything was left out, it says `ignored a zero byte in the input`. */
+struct shell;
+void input_warn_zero(const struct shell *sh);
+
 #endif

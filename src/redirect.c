@@ -25,9 +25,23 @@ static void push_backup(struct redir_undo *undo, int fd, int copy)
     undo->items[undo->len++] = (struct fd_backup){ .fd = fd, .copy = copy };
 }
 
-/* Keeps a copy of fd before its first change. */
-static bool backup(struct shell *sh, struct redir_undo *undo, int fd)
+/* The redirection as typed, like "> f" or "2>> log", for errors. */
+static void redir_text(const struct redirection *r, char *out, size_t size)
 {
+    static const char *const ops[] = { "<", ">", ">>", "<&", ">&" };
+    int usual = r->kind == REDIR_IN || r->kind == REDIR_DUP_IN ? 0 : 1;
+
+    if (r->fd == usual)
+        snprintf(out, size, "%s %s", ops[r->kind], r->target);
+    else
+        snprintf(out, size, "%d%s %s", r->fd, ops[r->kind], r->target);
+}
+
+/* Keeps a copy of r's fd before its first change. */
+static bool backup(struct shell *sh, struct redir_undo *undo, const struct redirection *r)
+{
+    int fd = r->fd;
+    char what[256];
     char name[16];
 
     int copy;
@@ -43,7 +57,8 @@ static bool backup(struct shell *sh, struct redir_undo *undo, int fd)
             int moved = fcntl(fd, F_DUPFD_CLOEXEC, BACKUP_MIN_FD);
 
             if (moved < 0) {
-                shell_error(sh, "%d: %s", fd, strerror(errno));
+                redir_text(r, what, sizeof what);
+                shell_error(sh, "%s: can't save fd %d: %s", what, fd, high_fd_error(errno));
                 return false;
             }
             undo->items[i].copy = moved;
@@ -55,7 +70,8 @@ static bool backup(struct shell *sh, struct redir_undo *undo, int fd)
     }
     copy = fcntl(fd, F_DUPFD_CLOEXEC, BACKUP_MIN_FD);
     if (copy < 0 && errno != EBADF) {
-        shell_error(sh, "%d: %s", fd, strerror(errno));
+        redir_text(r, what, sizeof what);
+        shell_error(sh, "%s: can't save fd %d: %s", what, fd, high_fd_error(errno));
         return false;
     }
     if (copy >= 0) {
@@ -177,7 +193,7 @@ bool redir_apply(struct shell *sh, const struct command *cmd, struct redir_undo 
         char *target;
         bool ok;
 
-        if (undo != NULL && !backup(sh, undo, r->fd))
+        if (undo != NULL && !backup(sh, undo, r))
             return false;
         target = expand_one(sh, r->target, err, sizeof err);
         if (target == NULL) {

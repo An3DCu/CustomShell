@@ -3,8 +3,22 @@
 #include <errno.h>
 #include <unistd.h>
 
+#include "error.h"
 #include "signals.h"
 #include "xalloc.h"
+
+static bool zero_seen;
+
+void input_warn_zero(const struct shell *sh)
+{
+    static bool warned;
+
+    if (zero_seen && !warned) {
+        shell_error(sh, "ignored a zero byte in the input");
+        warned = true;
+    }
+    zero_seen = false;
+}
 
 ssize_t input_read_line(int fd, char **line, size_t *cap, bool interruptible)
 {
@@ -24,6 +38,12 @@ ssize_t input_read_line(int fd, char **line, size_t *cap, bool interruptible)
         }
         if (n == 0)
             break;
+        if (c == '\0') {
+            /* C strings end at a zero byte, so it would cut the line short.
+             * Dropped, as bash and dash do; input_warn_zero says so. */
+            zero_seen = true;
+            continue;
+        }
         if (len + 2 > *cap) { /* room for c and the final 0 */
             *cap = *cap ? *cap * 2 : 128;
             *line = xreallocarray(*line, *cap, 1);
