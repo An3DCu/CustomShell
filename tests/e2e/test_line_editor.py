@@ -67,6 +67,7 @@ def wait_for(check, what):
         "junk" + "\x15" + "echo =abc=",           # Ctrl+U
         "echo =abc= junk" + "\x17",               # Ctrl+W
         "echo =ab" + "\x1b[15~" + "\x02" + "c=",  # F5 and Ctrl+B do nothing
+        "\x15\x17" + "echo =abc=",                # Ctrl+U and Ctrl+W on an empty line
         "echo =ab" + HOME + BACKSPACE + END + DELETE + "c=",  # nothing to remove
     ],
 )
