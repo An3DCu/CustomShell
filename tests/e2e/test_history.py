@@ -1,7 +1,7 @@
 """History: the history built-in, the file, Up and Down, and Ctrl+R.
 
-The terminal fixture points HISTFILE at a file in the test's own folder, so
-the tests never touch the real ~/.acsh_history.
+The terminal fixture points HISTFILE at a file in the test's own folder. The
+tests never touch the user's ~/.acsh_history.
 """
 
 import re
@@ -23,7 +23,7 @@ def editor(terminal):
 
 def lines(shell, *typed):
     """Enters each line and waits for the prompt after it. The editor draws
-    "acsh$ " again on every key, so only one right after a newline counts."""
+    "acsh$ " again on every key. Only one right after a newline counts."""
     for line in typed:
         shell.sendline(line)
         shell.expect(r"\r\n" + PROMPT)
@@ -31,7 +31,7 @@ def lines(shell, *typed):
 
 def history_output(shell):
     """The numbered lines `history` prints. It waits for the prompt after
-    them, so a slow acsh (under valgrind) can't be read halfway."""
+    them. A slow acsh (under valgrind) can't be read halfway."""
     shell.sendline("history")
     shell.expect(r"\r\n" + PROMPT)
     numbered = re.findall(r"^ +\d+  .*$", shell.before.replace("\r", ""), re.M)

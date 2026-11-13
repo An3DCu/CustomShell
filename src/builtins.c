@@ -63,8 +63,8 @@ static int builtin_cd(struct shell *sh, int argc, char **argv)
         free(before);
         return 1;
     }
-    /* dir may point into the variable table, which vars_set changes, so it
-     * isn't used after this. */
+    /* dir may point into the variable table. vars_set changes that table.
+     * dir isn't used after this. */
     after = xgetcwd();
     if (before != NULL)
         set_exported(sh, "OLDPWD", before);
@@ -98,8 +98,8 @@ static int builtin_pwd(struct shell *sh, int argc, char **argv)
 
 /* ---- echo --------------------------------------------------------------- */
 
-/* Like bash: an argument is an option only if it's "-" followed by nothing
- * but n, e and E. So -nE is an option, while -x, - and -- are printed. */
+/* As in bash, an argument is an option only if it's "-" followed by nothing
+ * but n, e and E. -nE is an option. -x, - and -- are printed. */
 static bool is_echo_option(const char *arg)
 {
     if (arg[0] != '-' || arg[1] == '\0')
@@ -122,7 +122,7 @@ static int hex_value(char c)
     return -1;
 }
 
-/* Prints s with echo -e escapes. Returns false at \c, which means "stop
+/* Prints s with echo -e escapes. Returns false at \c. That means "stop
  * printing, no newline either". */
 static bool print_escaped(const char *s)
 {
@@ -216,7 +216,7 @@ static bool parse_number(const char *s, long *out)
     *out = strtol(s, &end, 10);
     if (errno != 0 || *end != '\0')
         return false;
-    /* strtol also skips leading blanks; a number here starts right away. */
+    /* strtol also skips leading blanks. A number here starts right away. */
     return s[0] == '-' || s[0] == '+' || (s[0] >= '0' && s[0] <= '9');
 }
 
@@ -227,7 +227,7 @@ static int builtin_exit(struct shell *sh, int argc, char **argv)
 
     if (argc > 2) {
         shell_error(sh, "exit: too many arguments");
-        return 1; /* like bash: an error, but the shell stays */
+        return 1; /* an error. The shell stays, as in bash. */
     }
     if (argc == 2) {
         if (parse_number(argv[1], &n)) {
@@ -239,7 +239,7 @@ static int builtin_exit(struct shell *sh, int argc, char **argv)
         }
     }
     if (!jobs_may_leave(sh))
-        return 1; /* it warned about stopped jobs; the shell stays */
+        return 1; /* it warned about stopped jobs. The shell stays. */
     sh->exiting = true;
     return status;
 }
@@ -377,9 +377,9 @@ static int builtin_false(struct shell *sh, int argc, char **argv)
 
 /* ---- break and continue ------------------------------------------------- */
 
-/* break [n] and continue [n] only set a count; the loops act on it (see
+/* break [n] and continue [n] only set a count. The loops act on it (see
  * loop_ends in exec.c). n bigger than the number of loops means all of
- * them, and outside a loop there's nothing to do, as in dash. */
+ * them. Outside a loop there's nothing to do, as in dash. */
 static int loop_jump(struct shell *sh, int argc, char **argv, int *count)
 {
     long n = 1;
@@ -432,10 +432,10 @@ static void read_buf_add(struct read_buf *b, char c, bool escaped)
 }
 
 /*
- * Reads one line from stdin into b, one byte at a time like the shell, so
- * the rest stays for the next command. Without -r, a backslash keeps the
- * next byte from separating fields, and a backslash at the end of the line
- * joins the next one. Returns 0 for a full line, 1 at the end of input
+ * Reads one line from stdin into b, one byte at a time like the shell. The
+ * rest stays for the next command. Without -r, a backslash keeps the next
+ * byte from separating fields. A backslash at the end of the line joins the
+ * next one. Returns 0 for a full line, 1 at the end of input
  * (b holds whatever came before it), or 130 after Ctrl+C.
  */
 static int read_line_into(struct shell *sh, struct read_buf *b, bool raw)
@@ -510,10 +510,10 @@ static bool is_separator(const struct read_buf *b, const char *ifs, size_t i)
 }
 
 /*
- * Splits b over the names, POSIX style: each name but the last gets one
- * field, and the last gets the rest of the line, without IFS spaces at
- * either end. If that rest is a single field plus one separator, the
- * separator goes too: with IFS=:, "a:b:" gives y=b but "a:b::" gives b::.
+ * Splits b over the names, POSIX style. Each name but the last gets one
+ * field. The last gets the rest of the line, without IFS spaces at either
+ * end. If that rest is a single field plus one separator, the separator
+ * goes too. With IFS=:, "a:b:" gives y=b but "a:b::" gives b::.
  */
 static void assign_fields(struct shell *sh, const struct read_buf *b, char **names, int n)
 {
@@ -614,8 +614,9 @@ static bool is_readable_file(const char *path)
 }
 
 /* A name with a / is used as it is. Otherwise it's looked for in PATH, as
- * POSIX says, and then in the current folder, as bash does, so
- * `source setup.sh` works. Returns a new string, or NULL. */
+ * POSIX says. After that it's looked for in the current folder, as bash
+ * does. That's what makes `source setup.sh` work. Returns a new string, or
+ * NULL. */
 static char *find_sourced(const struct shell *sh, const char *name)
 {
     const char *path = vars_get(&sh->vars, "PATH");
@@ -642,10 +643,10 @@ static char *find_sourced(const struct shell *sh, const char *name)
 }
 
 /*
- * source file [arg ...] runs the file's commands in this shell, so its
+ * source file [arg ...] runs the file's commands in this shell. Its
  * variables and cd stay. With arguments, they are $1, $2, ... while it
- * runs, and the old ones come back after. Its status is the last
- * command's. An exit in the file leaves the shell, as POSIX says.
+ * runs. The old ones come back after. Its status is the last command's.
+ * An exit in the file leaves the shell, as POSIX says.
  */
 static int builtin_source(struct shell *sh, int argc, char **argv)
 {
@@ -736,7 +737,7 @@ static int builtin_jobs(struct shell *sh, int argc, char **argv)
 /* ---- fg and bg ---------------------------------------------------------- */
 
 /* The job spec names, or the current one with spec NULL. NULL after an
- * error, which it prints. */
+ * error. It prints the error. */
 static struct job *job_for(struct shell *sh, const char *name, const char *spec)
 {
     char err[128];
@@ -766,7 +767,7 @@ static int builtin_fg(struct shell *sh, int argc, char **argv)
 
     if (!have_job_control(sh, "fg"))
         return 1;
-    /* only one can be in front: the rest are ignored, as in bash and dash */
+    /* only one can be in front. The rest are ignored, as in bash and dash. */
     job = job_for(sh, "fg", argc >= 2 ? argv[1] : NULL);
     return job != NULL ? jobs_fg(sh, job) : 1;
 }
@@ -871,7 +872,7 @@ static int list_signals(struct shell *sh, int argc, char **argv)
 }
 
 /* Sends sig to pid, a whole group when it's negative. TERM or HUP to a
- * stopped target is followed by SIGCONT, as bash does: a stopped process
+ * stopped target is followed by SIGCONT, as bash does. A stopped process
  * only acts on them once it runs again. */
 static bool send_signal(struct shell *sh, const char *target, pid_t pid, int sig, bool stopped)
 {
@@ -929,7 +930,7 @@ static bool kill_target(struct shell *sh, const char *target, int sig)
 /*
  * kill [-SIGNAL | -s SIGNAL] [--] %n | pid ...   TERM if no signal is given
  * kill -l [n | name ...]
- * Every target is tried; the status is 1 if any of them failed.
+ * Every target is tried. The status is 1 if any of them failed.
  */
 static int builtin_kill(struct shell *sh, int argc, char **argv)
 {
@@ -1041,7 +1042,7 @@ static void print_variables(const struct shell *sh)
 }
 
 /* set -o explain / set +o explain. The line that runs set isn't explained
- * after all; the ones after it are. */
+ * after all. The ones after it are. */
 static int set_option(struct shell *sh, bool on, const char *name)
 {
     if (name == NULL) {
@@ -1092,7 +1093,7 @@ static int builtin_set(struct shell *sh, int argc, char **argv)
 }
 
 /* explain only means something at the start of a line, where the parser
- * takes it; anywhere else this runs instead. */
+ * takes it. Anywhere else this runs instead. */
 static int builtin_explain(struct shell *sh, int argc, char **argv)
 {
     (void)sh;
@@ -1290,7 +1291,7 @@ static void print_help_page(const struct builtin *b)
         }
         return;
     }
-    printf("    %s\n", b->summary); /* every built-in has details; this is just in case */
+    printf("    %s\n", b->summary); /* every built-in has details. This is a fallback. */
 }
 
 static int builtin_help(struct shell *sh, int argc, char **argv)

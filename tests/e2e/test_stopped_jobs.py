@@ -1,8 +1,8 @@
 """Ctrl+Z, fg and bg, in a pseudo-terminal.
 
 Ctrl+Z is pressed only once the command runs in front (see in_front).
-The other stops come from the job itself with kill -STOP, so they happen
-at a known point.
+The other stops come from the job itself with kill -STOP. They happen at a
+known point.
 """
 
 PROMPT = r"acsh\$ "
@@ -78,7 +78,7 @@ def test_the_current_job_is_the_one_stopped_last(prompt):
     prompt.expect_exact("job 2 stopped")
     prompt.expect(PROMPT)
     say(prompt, "sleep 30 &")
-    # job 3 is newer, but job 2 is the stopped one
+    # job 3 is newer. job 2 is the stopped one.
     assert "job 2 running" in say(prompt, "bg")
     # now job 2 went to the background last, and job 3 before it
     assert "acsh: bg: job 3 is already running" in say(prompt, "bg %-")

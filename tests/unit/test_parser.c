@@ -2,9 +2,9 @@
  * Parser tests. A parsed list is described on one line: commands joined by
  * " | ", each with its words as typed, then its redirections with the fd
  * spelled out (> becomes 1>, < becomes 0<), in the order they were written.
- * Pipelines are joined by " && " or " || ", the list's items by " ; ", and
- * a negated pipeline starts with "! ". A compound command shows its lists
- * in braces:
+ * Pipelines are joined by " && " or " || ", the list's items by " ; ". A
+ * negated pipeline starts with "! ". A compound command shows its lists in
+ * braces:
  *
  *     if a; then b; else c; fi > f   ->   if {a} then {b} else {c} fi 1>f
  *
@@ -195,7 +195,7 @@ static void test_redirections(void)
 
 static void test_redirection_order_is_kept(void)
 {
-    /* These two mean different things, so the order must survive. */
+    /* These two mean different things. The order must survive. */
     CHECK_PARSE("cmd 2>&1 >f", "cmd 2>&1 1>f");
     CHECK_PARSE("cmd >f 2>&1", "cmd 1>f 2>&1");
 }
@@ -274,7 +274,7 @@ static void test_negation(void)
     CHECK_PARSE("! false", "! false");
     CHECK_PARSE("! a | b && ! c", "! a | b && ! c");
     CHECK_PARSE("echo !", "echo !");
-    CHECK_PARSE("'!' x", "'!' x");          /* quoted: just a command name */
+    CHECK_PARSE("'!' x", "'!' x");          /* quoted, it's only a command name */
     CHECK_PARSE("!x", "!x");
     CHECK_PARSE("!", "syntax: syntax error near end of line");
 }
@@ -470,7 +470,7 @@ static void test_unfinished_lines(void)
 static void test_lines_joined_by_a_backslash(void)
 {
     CHECK_PARSE("echo a \\\nb\n", "echo a b");
-    CHECK_PARSE("echo a\\\nb\n", "echo a\\\nb");  /* one word; expansion drops the \\newline */
+    CHECK_PARSE("echo a\\\nb\n", "echo a\\\nb");  /* one word. Expansion drops the \\newline. */
     CHECK_PARSE("echo 'a\nb'\n", "echo 'a\nb'");
 }
 

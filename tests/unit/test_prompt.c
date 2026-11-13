@@ -45,7 +45,7 @@ static void test_home_with_trailing_slash(void)
     CHECK_FOLDER("/home/user/x", "/home/user//", "~/x");
 }
 
-/* Colors: on for a real terminal type, off for NO_COLOR, dumb or no TERM. */
+/* Colors: on for a terminal type that has them, off for NO_COLOR, dumb or no TERM. */
 static void test_colors(void)
 {
     CHECK(prompt_colors(NULL, "xterm-256color"));

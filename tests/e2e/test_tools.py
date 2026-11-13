@@ -1,11 +1,12 @@
 """My own cat, head and wc, checked against GNU coreutils.
 
-Every tool runs on the same awkward inputs as the GNU tool, with LC_ALL=C so
-GNU counts bytes, not characters. cat and head must give exactly the same
-bytes. For wc only the numbers are compared: the column spacing is my own.
+Every tool runs on the same awkward inputs as the GNU tool, with LC_ALL=C.
+GNU then counts bytes instead of characters. cat and head must give exactly
+the same bytes. For wc only the numbers are compared. The column spacing is
+my own.
 
-Ubuntu 25.10 and later run uutils (a Rust rewrite) as `cat`, and keep GNU
-as `gnucat`; older systems have GNU as `cat`. gnu() finds the GNU one either
+Ubuntu 25.10 and later run uutils (a Rust rewrite) as `cat`. They keep GNU
+as `gnucat`. Older systems have GNU as `cat`. gnu() finds the GNU one either
 way and refuses to compare against anything else.
 """
 
@@ -67,8 +68,8 @@ def run_tool(path, *args, stdin=b"", cwd=None):
 def system(name, *args, stdin=b"", cwd=None):
     """Runs the GNU version of the tool.
 
-    wc runs with POSIXLY_CORRECT: by default GNU wc also splits words at byte
-    0xA0 (a no-break space), which POSIX doesn't. Mine follows POSIX.
+    wc runs with POSIXLY_CORRECT. By default GNU wc also splits words at byte
+    0xA0 (a no-break space). POSIX doesn't. Mine follows POSIX.
     """
     env = {**os.environ, **SYSTEM}
     if name == "wc":
@@ -107,7 +108,7 @@ def test_cat_mixes_files_and_stdin(tools, files):
 
 
 def test_cat_numbered_lines_come_out_right_away(tools):
-    # -n collects output, but must not hold a line back waiting for more.
+    # -n collects output. It must not hold a line back waiting for more.
     proc = subprocess.Popen([str(tools / "cat"), "-n"], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
     try:
         proc.stdin.write(b"typed\n")
@@ -181,7 +182,7 @@ def test_head_option_written_together(tools, files):
 
 def test_head_stops_reading_early(run, tools):
     # yes never ends by itself. It only stops when head exits and the pipe
-    # loses its reader, so this would hang if head read on to the end.
+    # loses its reader. This would hang if head read on to the end.
     result = run(stdin=f"yes | {shlex.quote(str(tools / 'head'))} -n 3\n", timeout=10)
     assert result.stdout == "y\ny\ny\n"
     assert result.returncode == 0
@@ -208,7 +209,7 @@ def test_head_missing_file(tools, files):
 # ---- wc ---------------------------------------------------------------------
 
 
-# Every input with all counts, one count, and two together; the other
+# Every input with all counts, one count, and two together. The other
 # single counts once each, on the file where they're hardest.
 @pytest.mark.parametrize(
     "name, flags",
@@ -236,7 +237,7 @@ def test_wc_columns_line_up(tools, files):
 
 
 def test_wc_words_split_only_at_whitespace(tools):
-    # Space, tab, newline, \v, \f and \r split words; nothing else does. GNU
+    # Space, tab, newline, \v, \f and \r split words. Nothing else does. GNU
     # also splits at 0xA0 unless POSIXLY_CORRECT is set.
     assert run_tool(tools / "wc", "-w", stdin=b"a b\tc\nd\ve\ff\rg").stdout == b"7\n"
     assert run_tool(tools / "wc", "-w", stdin=b"a\xa0a a\0a a\x7fa").stdout == b"3\n"
@@ -281,7 +282,7 @@ def test_without_the_option_the_system_tools_run(run):
     result = run(stdin="cat --help\n")
     assert result.returncode == 0
     assert result.stdout != ""
-    assert not result.stdout.startswith("usage: cat [-n]")  # the system's help, not mine
+    assert not result.stdout.startswith("usage: cat [-n]")  # the system's help instead of mine
 
 
 @pytest.mark.not_under_valgrind("the copy is the wrapper, which still runs acsh next to its tools")

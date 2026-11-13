@@ -2,9 +2,9 @@
  * check: my small unit test harness.
  *
  * A test is a void function. main() runs each with RUN(name) and returns
- * check_summary(), which is non-zero if anything failed, so make stops.
- * A failed CHECK prints where and why, and the test keeps going, so one run
- * shows every failure in it.
+ * check_summary(). It's non-zero if anything failed. make stops then.
+ * A failed CHECK prints where and why. The test keeps going. One run shows
+ * every failure in it.
  *
  *     static void test_adds(void) { CHECK_INT_EQ(4, 2 + 2); }
  *     int main(void) { RUN(test_adds); return check_summary(); }
@@ -13,7 +13,7 @@
 #define CHECK_H
 
 #include <stdbool.h>
-#include <stddef.h> /* NULL, which most tests compare against */
+#include <stddef.h> /* for NULL. Most tests compare against it. */
 
 void check_run(const char *name, void (*test)(void));
 int check_summary(void);
@@ -21,7 +21,7 @@ int check_summary(void);
 void check_fail(const char *file, int line, const char *fmt, ...)
     __attribute__((format(printf, 3, 4)));
 
-/* The comparisons behind the macros, so the harness can test them too. */
+/* The comparisons behind the macros. The harness can test them too. */
 bool check_str_same(const char *a, const char *b);
 
 #define RUN(test) check_run(#test, test)
@@ -40,7 +40,7 @@ bool check_str_same(const char *a, const char *b);
                        #got, want_, got_);                                 \
     } while (0)
 
-/* NULL only equals NULL; both sides are printed with quotes. */
+/* NULL only equals NULL. Both sides are printed with quotes. */
 #define CHECK_STR_EQ(want, got)                                            \
     do {                                                                   \
         const char *want_ = (want), *got_ = (got);                         \

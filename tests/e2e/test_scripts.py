@@ -1,9 +1,9 @@
 """Scripts: acsh file, acsh -c, source and ., $0, $1, $#, $@ and shift.
 
 The comparisons run each case in acsh and in dash with the same arguments.
-dash has no `source` (only `.`), ignores arguments after `. file`, and
-stops a script when shift fails; acsh does what bash does there, so those
-cases are checked against acsh's own expected output instead.
+dash has no `source` (only `.`). It ignores arguments after `. file`. It
+stops a script when shift fails. acsh does what bash does there. Those cases
+are checked against acsh's own expected output instead.
 """
 
 import shutil
@@ -127,8 +127,8 @@ def test_folder_as_a_script(run, workdir):
 
 @pytest.fixture
 def acsh_link(acsh, workdir):
-    """A path to acsh without spaces: a #! line can't have one, and this
-    repo's folder may."""
+    """A path to acsh without spaces. A #! line can't have one. This repo's
+    folder may."""
     link = workdir / "acsh"
     link.symlink_to(acsh)
     return link

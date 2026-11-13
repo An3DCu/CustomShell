@@ -1,8 +1,9 @@
 """My own touch, mkdir and ls.
 
 touch and mkdir are checked by what they leave behind. ls is compared with
-GNU ls, byte for byte, on a folder full of awkward entries, with LC_ALL=C
-and TZ=UTC for both so sorting and times can't differ for locale reasons.
+GNU ls on a folder full of awkward entries. The output must be the same.
+Both get LC_ALL=C and TZ=UTC. Sorting and times can't differ for locale
+reasons then.
 """
 
 import os
@@ -211,7 +212,7 @@ def test_ls_matches_gnu(tools, tree, flags):
 def test_ls_columns_match_gnu(tools, tree, flags, columns):
     a = mine(tools, *flags, cwd=tree, columns=columns).stdout.decode()
     b = theirs(*flags, cwd=tree, columns=columns).stdout.decode()
-    assert a == b.expandtabs(8)  # GNU may pad with tabs; the layout is what counts
+    assert a == b.expandtabs(8)  # GNU may pad with tabs. The layout is what counts.
 
 
 def test_ls_columns_with_many_names(tools, workdir):
@@ -246,7 +247,7 @@ def test_ls_empty_folder(tools, tree):
 
 
 def test_ls_in_a_terminal_uses_columns(tools, tree):
-    # A real terminal 40 columns wide, no COLUMNS variable: ls has to ask the
+    # A terminal 40 columns wide, with no COLUMNS variable. ls has to ask the
     # terminal for its width. (Quoted: pexpect splits a command with spaces.)
     child = pexpect.spawn(shlex.quote(str(tools / "ls")), cwd=str(tree), dimensions=(24, 40),
                           env={**{k: v for k, v in os.environ.items() if k != "COLUMNS"}, **UTC},

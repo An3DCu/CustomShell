@@ -1,8 +1,8 @@
 /*
  * Expansion and quote removal. Every expected value here was also checked
  * against dash, the POSIX shell Ubuntu uses as /bin/sh, with
- * printf '[%s]' <word>: the fields come back as "[a][b]", and no fields at
- * all as "".
+ * printf '[%s]' <word>. The fields come back as "[a][b]". No fields at all
+ * come back as "".
  */
 #include "check.h"
 
@@ -222,7 +222,7 @@ static void test_a_lone_dollar_stays(void)
     CHECK_STR_EQ("[$]", fields("\"$\""));
     CHECK_STR_EQ("[a$]", fields("a$"));
     CHECK_STR_EQ("[$%]", fields("$%"));
-    CHECK_STR_EQ("[$-x]", fields("$-x")); /* $- isn't supported; kept as typed */
+    CHECK_STR_EQ("[$-x]", fields("$-x")); /* $- isn't supported. It's kept as typed. */
     CHECK_STR_EQ("", fields("$!"));       /* nothing in the background yet */
     sh.last_bg = 4321;
     CHECK_STR_EQ("[4321]", fields("$!"));
@@ -424,7 +424,7 @@ static void test_values_are_never_syntax(void)
     set("X", "a; rm -rf ~ | cat > f");
     CHECK_STR_EQ("[a;][rm][-rf][~][|][cat][>][f]", fields("$X"));
     set("Y", "$X");
-    CHECK_STR_EQ("[$X]", fields("$Y")); /* expanded once, not again */
+    CHECK_STR_EQ("[$X]", fields("$Y")); /* expanded only once */
     set("Q", "'a b'");
     CHECK_STR_EQ("['a][b']", fields("$Q"));
 }

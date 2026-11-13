@@ -6,9 +6,10 @@
 #include <sys/types.h>
 
 /*
- * What my small tools in tools/ share: error messages in the same format as
- * the shell's ("cat: notes.txt: No such file or directory"), and reading and
- * writing with plain read() and write(), which can do less than asked.
+ * What my small tools in tools/ share. Error messages come in the same
+ * format as the shell's ("cat: notes.txt: No such file or directory").
+ * Reading and writing go through plain read() and write(). Those can do
+ * less than asked.
  */
 
 /* The name used in messages. Call first thing in main. */

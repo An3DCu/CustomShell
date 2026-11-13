@@ -9,8 +9,8 @@
  *
  * A word keeps its quotes and backslashes exactly as typed: `"a b"` stays
  * `"a b"`. Expansion needs them (in "$HOME" the $ expands, in '$HOME' it
- * doesn't) and removes them at the end; see expand.h. The lexer only has to
- * know where a quote ends, so `echo "a | b"` is one word and no pipe.
+ * doesn't). It removes them at the end (see expand.h). The lexer only has
+ * to know where a quote ends. `echo "a | b"` is then one word and no pipe.
  */
 
 enum token_type {
@@ -28,7 +28,7 @@ enum token_type {
     TOK_DGREAT,   /* >> */
     TOK_LESSAND,  /* <& */
     TOK_GREATAND, /* >& */
-    TOK_END,      /* end of the line; always the last token */
+    TOK_END,      /* end of the line, always the last token */
 };
 
 struct token {

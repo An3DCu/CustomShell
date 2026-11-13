@@ -31,7 +31,7 @@ struct shell {
     int explain_out;  /* where explain lines go now: explain_fd, or a child's report pipe */
     const char *where; /* the script running now, for errors; NULL at the prompt or from a pipe */
     int line;         /* the line in it of the command running now */
-    int unit_line;    /* the line where the command being run starts; commands count from it */
+    int unit_line;    /* the line where the command being run starts. Commands count from it. */
     bool job_control; /* interactive, on a terminal: pipelines get process groups (jobs.h) */
     pid_t pgid;       /* the shell's own process group */
     int tty_fd;       /* the shell's copy of the terminal, at 10 or above */
@@ -41,7 +41,7 @@ struct shell {
     size_t njobs;
     size_t jobs_cap;
     unsigned long job_turns; /* counts stops and starts in the background, for %+ */
-    unsigned long commands;  /* pipelines run so far, so exit can tell "right after" */
+    unsigned long commands;  /* pipelines run so far. exit uses it to tell "right after". */
     unsigned long exit_warned; /* commands at the exit that warned about stopped jobs */
     pid_t last_bg;   /* $!: the last command started in the background, 0 if none */
     struct history history; /* lines typed at the prompt (history.h) */

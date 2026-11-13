@@ -1,7 +1,7 @@
 """Background jobs: &, the notices, jobs, and no zombies.
 
 Without a terminal the cases run in acsh and in dash and compare. The
-notices only show in an interactive shell, so those tests use the terminal.
+notices only show in an interactive shell. Those tests use the terminal.
 """
 
 import os
@@ -91,10 +91,10 @@ def test_wait_says_a_signal_killed_the_job(run):
 
 
 def test_a_script_job_ignores_ctrl_c(acsh, workdir):
-    # Without job control a background command ignores SIGINT, so Ctrl+C
-    # (sent to the whole group here) only stops what's in front.
-    # Twenty jobs, each sent SIGINT right after it starts, so the signal can
-    # come before the child has set up ignoring it; none may die of it.
+    # Without job control a background command ignores SIGINT. Ctrl+C
+    # (sent to the whole group here) then only stops what's in front.
+    # Twenty jobs, each sent SIGINT right after it starts. The signal can
+    # come before the child has set up ignoring it. None may die of it.
     script = workdir / "s.sh"
     script.write_text("for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do\n"
                       "  sleep 0.3 & kill -INT $!\n"
@@ -175,7 +175,7 @@ def test_numbers_go_up_and_start_again(prompt):
     prompt.sendline("")
     prompt.expect("job 1 done")
     prompt.sendline("true &")
-    prompt.expect("job 1 started")  # nothing left, so 1 again
+    prompt.expect("job 1 started")  # nothing left. It's 1 again.
 
 
 def test_a_job_is_not_in_front(prompt):
@@ -198,7 +198,7 @@ def test_ctrl_c_doesnt_reach_a_job(prompt):
 
 
 def test_a_job_that_reads_the_terminal_stops(prompt):
-    # Only the group in front may read the terminal; a job that tries gets
+    # Only the group in front may read the terminal. A job that tries gets
     # SIGTTIN and stops. In front again, after fg, it can read.
     prompt.sendline("cat &")
     prompt.expect("job 1 started")
@@ -227,8 +227,8 @@ def test_no_zombies_at_the_prompt(prompt):
 
 
 def test_a_job_is_collected_while_the_prompt_waits(prompt):
-    # The self-pipe wakes the prompt when the job ends, so it doesn't stay a
-    # zombie until the next Enter; the notice still waits for that Enter.
+    # The self-pipe wakes the prompt when the job ends. The job doesn't stay
+    # a zombie until the next Enter. The notice still waits for that Enter.
     prompt.sendline("sleep 0.2 &")
     prompt.expect("job 1 started")
     prompt.expect(r"acsh\$ ")
@@ -252,7 +252,7 @@ def test_ctrl_c_stops_wait_and_the_job(prompt):
     prompt.expect(r"acsh\$ ")
     prompt.sendline("echo $?")
     prompt.expect("130")
-    # The job got the Ctrl+C too: its notice says so, and nothing runs.
+    # The job got the Ctrl+C too. Its notice says so. Nothing runs.
     time.sleep(0.2)
     prompt.sendline("jobs; echo end")
     prompt.expect("end\r\n")

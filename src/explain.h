@@ -26,10 +26,10 @@
  * Turn it on for one line with `explain cmd ...`, or for every line with
  * `acsh --explain` or `set -o explain` (and off with `set +o explain`).
  *
- * The lines go to a copy of stderr made when explain mode starts, so a
- * command's own `2> f` doesn't swallow them. A child reports through a
- * pipe of its own that the shell reads before it goes on, and the pipe is
- * close-on-exec: it reaches end of file the moment exec works. That keeps
+ * The lines go to a copy of stderr made when explain mode starts. A
+ * command's own `2> f` then doesn't swallow them. A child reports through a
+ * pipe of its own. The shell reads it before it goes on. The pipe is
+ * close-on-exec. It reaches end of file the moment exec works. That keeps
  * the lines in the order things happen, even with several children.
  */
 
@@ -43,8 +43,8 @@ bool explain_on(const struct shell *sh);
 /* The plan of a line, and the "run" heading under it. */
 void explain_plan(struct shell *sh, const struct list *list);
 
-/* One event: what was called, and a note on what it means. Lines from a
- * child start with its pid. */
+/* One event. It shows what was called, with a note on what it means. Lines
+ * from a child start with its pid. */
 void explain_event(struct shell *sh, const char *note, const char *fmt, ...)
     __attribute__((format(printf, 3, 4)));
 

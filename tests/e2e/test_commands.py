@@ -138,10 +138,10 @@ def test_unclosed_quote_is_an_error(run):
 
 
 def test_commands_get_the_rest_of_stdin(run):
-    # acsh must not read ahead: the lines after `cat` belong to cat. (dash
-    # reads ahead and runs "hello" as a command; bash gets this right.)
+    # acsh must not read ahead. The lines after `cat` belong to cat. (dash
+    # reads ahead and runs "hello" as a command. bash gets this right.)
     assert run(stdin="cat\nhello\n").stdout == "hello\n"
-    # sh's read takes exactly one line, so the shell gets the next one back.
+    # sh's read takes exactly one line. The shell gets the next one back.
     result = run(stdin="sh -c 'read x; echo got $x'\nhello\necho after\n")
     assert result.stdout == "got hello\nafter\n"
 

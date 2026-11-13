@@ -7,8 +7,8 @@
 #include <sys/resource.h>
 #include <unistd.h>
 
-/* The message is put together first and written with one write(), so two
- * children reporting at the same time don't mix up each other's lines. */
+/* The message is put together first and written with one write(). Two
+ * children reporting at the same time can't mix up each other's lines. */
 static void say(const char *lead, const char *where, int line, const char *fmt, va_list ap)
     __attribute__((format(printf, 4, 0)));
 
@@ -24,9 +24,9 @@ static void say(const char *lead, const char *where, int line, const char *fmt, 
     if (n < 0)
         return;
     if ((size_t)n >= sizeof buf - 1)
-        n = (int)sizeof buf - 2; /* cut off, but still one line */
+        n = (int)sizeof buf - 2; /* cut off. It's still one line. */
     buf[n++] = '\n';
-    fflush(stderr); /* nothing should be waiting, but stay in order */
+    fflush(stderr); /* nothing should be waiting. This keeps the order anyway. */
     (void)!write(STDERR_FILENO, buf, (size_t)n);
 }
 

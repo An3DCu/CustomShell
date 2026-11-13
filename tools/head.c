@@ -8,8 +8,8 @@
  * stdin.
  *
  * It stops reading as soon as it has its lines. In `yes | head -n 3` that's
- * what ends yes: head exits, the pipe has no reader left, and yes gets
- * SIGPIPE on its next write.
+ * what ends yes. head exits. The pipe has no reader left. yes gets SIGPIPE
+ * on its next write.
  */
 #include <errno.h>
 #include <stdbool.h>

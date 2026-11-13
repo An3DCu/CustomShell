@@ -10,9 +10,9 @@
 
 static volatile sig_atomic_t got_sigint;
 
-/* The self-pipe: the SIGCHLD handler writes a byte into [1], and the
- * prompt's pselect sees [0] become readable. -1 until signals_watch_children
- * sets it up, and always -1 in a script. */
+/* The self-pipe. The SIGCHLD handler writes a byte into [1]. The prompt's
+ * pselect sees [0] become readable. -1 until signals_watch_children sets it
+ * up. Always -1 in a script. */
 static int child_pipe[2] = { -1, -1 };
 static void (*child_hook)(void *);
 static void *child_hook_arg;
@@ -24,10 +24,10 @@ static void on_sigint(int sig)
     got_sigint = 1;
 }
 
-/* A child ended or stopped. Only write() is used, which is safe in a
- * handler; errno is put back so the code it interrupted doesn't see this
- * handler's result. The write end doesn't block: if the pipe is full,
- * there's a byte waiting already, and that's all the prompt needs. */
+/* A child ended or stopped. Only write() is used. It's safe in a handler.
+ * errno is put back. The code the handler interrupted never sees its
+ * result. The write end doesn't block. If the pipe is full, a byte is
+ * waiting already. That's all the prompt needs. */
 static void on_sigchld(int sig)
 {
     int saved = errno;
@@ -94,7 +94,7 @@ bool signals_watch_children(void (*hook)(void *), void *arg)
     child_hook_arg = arg;
     /* SA_RESTART: a read() or waitpid() that SIGCHLD interrupts starts
      * again by itself instead of failing with EINTR. pselect never
-     * restarts, which is what the prompt wants. */
+     * restarts. The prompt wants it that way. */
     set_handler_flags(SIGCHLD, on_sigchld, SA_RESTART);
     return true;
 }
@@ -216,8 +216,8 @@ static struct termios guard_modes;
 static bool guarded[NFATAL];
 
 /* tcsetattr and raise are both async-signal-safe. SA_RESETHAND has put the
- * default back already, so the raised signal ends acsh as it would have:
- * at once, or right after this returns. */
+ * default back already. The raised signal ends acsh as it would have, at
+ * once or right after this returns. */
 static void on_fatal(int sig)
 {
     tcsetattr(guard_fd, TCSANOW, &guard_modes);

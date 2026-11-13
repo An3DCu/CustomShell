@@ -8,13 +8,13 @@
 #include "shell.h"
 
 /*
- * Redirections, applied in the order they were written: in `cmd 2>&1 >f`,
+ * Redirections, applied in the order they were written. In `cmd 2>&1 >f`,
  * stderr goes where stdout pointed before stdout moved to f.
  *
- * In a child this is simple: change the fds, then exec. A built-in runs in
- * the shell itself, though, so the shell has to put its own fds back
+ * In a child this is simple. It changes the fds, then execs. A built-in
+ * runs in the shell itself. The shell has to put its own fds back
  * afterwards. Before an fd changes for the first time, a copy of it is kept
- * at 10 or above (close-on-exec, so no command inherits it), and
+ * at 10 or above. It's close-on-exec, and no command inherits it.
  * redir_restore() puts everything back in reverse order.
  */
 
@@ -29,9 +29,10 @@ struct redir_undo {
     size_t cap;
 };
 
-/* Applies cmd's redirections, expanding each target first ($F, ~/log; no
- * splitting). Pass undo in the shell, NULL in a child. On failure, prints why ("acsh: out.txt: Permission denied") and returns
- * false; the changes made before it stay until redir_restore. */
+/* Applies cmd's redirections, expanding each target first ($F, ~/log, with
+ * no splitting). Pass undo in the shell, NULL in a child. On failure,
+ * prints why ("acsh: out.txt: Permission denied") and returns false. The
+ * changes made before it stay until redir_restore. */
 bool redir_apply(struct shell *sh, const struct command *cmd, struct redir_undo *undo);
 
 /* Puts every saved fd back and empties undo. */

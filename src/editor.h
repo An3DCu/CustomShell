@@ -10,11 +10,11 @@
 /*
  * The line editor at the prompt, without readline.
  *
- * While a line is typed the terminal is in raw mode: no echo, no line
- * buffering, and Ctrl+C is a key instead of SIGINT. acsh reads one key at a
- * time and draws the line itself with ANSI codes, which every terminal
- * emulator in use understands. Raw mode ends before the line is returned,
- * so commands always get the terminal as it was.
+ * While a line is typed the terminal is in raw mode. There's no echo and no
+ * line buffering. Ctrl+C is a key instead of SIGINT. acsh reads one key at
+ * a time and draws the line itself with ANSI codes. Every terminal emulator
+ * in use understands them. Raw mode ends before the line is returned.
+ * Commands always get the terminal as it was.
  *
  *   Left, Right, Home, End, Ctrl+A, Ctrl+E   move the cursor
  *   Backspace, Delete                         remove a character
@@ -29,7 +29,7 @@
  *                                             match goes in, several are listed once
  *                                             and Tab and Shift+Tab go through them
  *
- * The cursor moves by byte: a letter like č is two bytes and two steps.
+ * The cursor moves by byte. A letter like č is two bytes and two steps.
  */
 
 /* Whether the editor can be used with this TERM: set, and not "dumb". */
@@ -40,8 +40,8 @@ struct editor_config {
                                  * the editor prints it again when it redraws */
     void (*repaint)(void *arg); /* for Ctrl+L: the whole prompt again */
     void *arg;
-    const struct history *hist; /* for Up, Down and Ctrl+R; may be NULL */
-    const char *path;           /* $PATH and $HOME, for Tab; may be NULL */
+    const struct history *hist; /* for Up, Down and Ctrl+R, or NULL */
+    const char *path;           /* $PATH and $HOME for Tab, or NULL */
     const char *home;
 };
 

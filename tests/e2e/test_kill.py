@@ -1,8 +1,8 @@
 """kill: signals to jobs and processes, and kill -l.
 
-The forms dash knows are compared with dash; the ones only bash knows
-(-SIGTERM, lowercase names) with bash. The messages and the -l list are
-acsh's own.
+The forms dash knows are compared with dash. The ones only bash knows
+(-SIGTERM, lowercase names) are compared with bash. The messages and the -l
+list are acsh's own.
 """
 
 import os
@@ -57,8 +57,8 @@ def test_like_dash(same_as, script):
         "sleep 5 & kill -hup $!; wait $!; echo $?\n",
         "sleep 5 & kill -s sigusr1 $!; wait $!; echo $?\n",
         "sleep 5 & kill -HUP -- $!; wait $!; echo $?\n",
-        # every process of the job. The pause lets both reach exec first: under
-        # valgrind a signal that comes before that is lost.
+        # every process of the job. The pause lets both reach exec first.
+        # Under valgrind a signal that comes before that is lost.
         "sleep 5 | sleep 5 & sleep 0.5; kill %1; wait %1; echo $?\n",
         "kill -l TERM sigkill\n",
     ],
@@ -120,8 +120,8 @@ def test_kill_wakes_a_stopped_job_so_it_ends(terminal):
     shell.sendline("explain kill %1")
     shell.expect(r"kill\(-\d+, SIGTERM\)\s+the signal goes to the whole group")
     shell.expect(r"kill\(-\d+, SIGCONT\)\s+it's stopped: wake it so it can end")
-    # The notice comes before the next prompt: this one if the job ended
-    # first, else the one after Enter. Both are still ahead in the output.
+    # The notice comes before the next prompt. That's this one if the job
+    # ended first, else the one after Enter. Both are still ahead in the output.
     only_the_shell_left(shell)
     shell.sendline("")
     shell.expect_exact("job 1 done: sh -c 'kill -STOP $$; sleep 30' (Terminated)")

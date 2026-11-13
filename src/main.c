@@ -1,9 +1,9 @@
 /*
- * acsh: a small Unix shell.
+ * acsh, a Unix shell.
  *
- * main reads the options, sets up the shell, and hands the commands to
- * script_run: from the terminal or a pipe, from a script file, or from the
- * text after -c. See script.c for the loop itself.
+ * main reads the options and sets up the shell. Then it hands the commands
+ * to script_run. They come from the terminal or a pipe, from a script file,
+ * or from the text after -c. See script.c for the loop itself.
  */
 #include <errno.h>
 #include <stdbool.h>
@@ -65,8 +65,8 @@ static char *own_path(void)
     }
 }
 
-/* --own-tools: put the tools folder next to acsh at the front of PATH, so
- * `cat` finds my cat first. Children see the same PATH. */
+/* --own-tools: put the tools folder next to acsh at the front of PATH.
+ * `cat` then finds my cat first. Children see the same PATH. */
 static bool use_own_tools(struct shell *sh)
 {
     char *exe = own_path();
@@ -135,8 +135,8 @@ int main(int argc, char **argv)
     sh.pid = getpid();
     sh.name = argv[0];
 
-    /* Options come first; the first other word is the script, and
-     * everything after it belongs to the script. */
+    /* Options come first. The first other word is the script. Everything
+     * after it belongs to the script. */
     for (; i < argc && argv[i][0] == '-' && argv[i][1] != '\0'; i++) {
         if (strcmp(argv[i], "--") == 0) {
             i++;

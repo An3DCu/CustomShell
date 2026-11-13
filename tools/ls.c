@@ -13,9 +13,9 @@
  * top to bottom, two spaces between them. The width comes from COLUMNS if
  * it's set, otherwise from the terminal, otherwise 80.
  *
- * Several operands: files are listed first, then each folder under a
- * "name:" heading. Limits: names are printed as they are (GNU quotes odd
- * names in a terminal), and widths count bytes, so UTF-8 names with
+ * With several operands, files are listed first. Then each folder follows
+ * under a "name:" heading. Two limits. Names are printed as they are (GNU
+ * quotes odd names in a terminal). Widths count bytes. UTF-8 names with
  * letters like č take more room than they need.
  */
 
@@ -174,10 +174,10 @@ static bool later(const struct timespec *a, const struct timespec *b)
 
 /* "Nov  6 14:03" for the last six months, "Nov  6  2025" for anything
  * older or in the future, like GNU ls. The clock is read once, to the
- * nanosecond. A file that looks newer than that may just have been changed
- * since, so the clock is read again before the file counts as the future,
- * as GNU ls does. time(), which only has whole seconds from a clock that
- * lags behind file times, called a file made a moment ago the future. */
+ * nanosecond. A file that looks newer than that may have been changed
+ * since. The clock is read again before the file counts as the future, as
+ * GNU ls does. time() only has whole seconds, from a clock that lags behind
+ * file times. With it, a file made a moment ago looked like the future. */
 static void time_string(const struct timespec *t, char *out, size_t size)
 {
     static struct timespec now;
@@ -258,8 +258,8 @@ static void measure(const struct list *list, struct widths *w, unsigned long lon
 /*
  * also_measure: entries that don't print here but still count for the
  * column widths. GNU ls measures every operand, folders included, before
- * it moves the folders out to list them on their own; matching that keeps
- * `ls -l file folder` byte for byte the same.
+ * it moves the folders out to list them on their own. Doing the same keeps
+ * the output of `ls -l file folder` the same as GNU's.
  */
 static void print_long(const struct list *list, const struct list *also_measure,
                        bool with_total)
@@ -275,7 +275,7 @@ static void print_long(const struct list *list, const struct list *also_measure,
     w_owner = w.owner;
     w_group = w.group;
     w_size = w.size;
-    /* st_blocks counts 512-byte blocks; ls shows 1024-byte ones, rounded up. */
+    /* st_blocks counts 512-byte blocks. ls shows 1024-byte ones, rounded up. */
     if (with_total)
         printf("total %llu\n", (blocks + 1) / 2);
 
@@ -318,7 +318,7 @@ static size_t line_width(void)
 
 /*
  * GNU's rule: try the most columns first. With c columns there are
- * ceil(n / c) rows, and name i goes in column i / rows. Every column is as
+ * ceil(n / c) rows. Name i goes in column i / rows. Every column is as
  * wide as its longest name plus 2, except the last. The first c whose total
  * is less than the width wins.
  */
@@ -460,7 +460,7 @@ int main(int argc, char **argv)
     }
 
     /* Sort the operands into files and folders. A symbolic link to a folder
-     * counts as the folder, except with -l, which shows the link itself. */
+     * counts as the folder. With -l the link itself is shown. */
     for (int i = optind; i < argc; i++) {
         struct stat st;
         int rc = long_format ? lstat(argv[i], &st) : stat(argv[i], &st);

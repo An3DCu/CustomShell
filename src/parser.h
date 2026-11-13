@@ -19,8 +19,8 @@
  *         pipeline   command  words: echo done
  *
  * Words, assignments and redirection targets are kept as typed (quotes and
- * $ included); they are only expanded when the command runs. Grammar for
- * now, where newline means one or more newlines:
+ * $ included). They are only expanded when the command runs. The grammar,
+ * where newline means one or more newlines:
  *
  *     program     = [newline] [list] [newline]
  *     list        = and_or { ( ";" | "&" | newline ) and_or } [";" | "&"]
@@ -36,16 +36,16 @@
  *     redirection = [fd] ( "<" | ">" | ">>" | "<&" | ">&" ) word
  *
  * The words in quotes are reserved words. They only count where a command
- * starts and when not quoted: `echo if` prints if, and `"if"` is a command
+ * starts and when not quoted. `echo if` prints if. `"if"` is a command
  * called if. Inside a compound, a list ends at the reserved word that comes
  * next (then, elif, else, fi, do, done).
  *
- * A line can start with the word explain: the rest of it is parsed as
+ * A line can start with the word explain. The rest of it is parsed as
  * usual and marked to be explained (see explain.h).
  *
  * A word of the form NAME=value that comes before the command name is an
- * assignment: in `X=1 Y=2 env`, X and Y are assignments, but in
- * `env X=1` it's an argument.
+ * assignment. In `X=1 Y=2 env`, X and Y are assignments. In `env X=1` it's
+ * an argument.
  */
 
 enum redir_kind {
@@ -78,23 +78,23 @@ struct if_branch {
     struct list *body;
 };
 
-/* A simple command with no words is allowed: "> f" just creates f, and
- * "X=1" sets X. Which fields are used depends on kind. */
+/* A simple command with no words is allowed. "> f" creates f. "X=1" sets
+ * X. Which fields are used depends on kind. */
 struct command {
     enum command_kind kind;
     int line;             /* the line it starts on, counting from 0 in the parsed text */
     char **assigns;       /* simple: NAME=value before the name, as typed, NULL-terminated */
     size_t nassigns;
-    char **words;         /* simple: the words; for: the words after in. As typed, NULL-terminated */
+    char **words;         /* simple's words, or for's after in. As typed, NULL-terminated */
     size_t nwords;
-    struct redirection *redirs; /* any kind, in the order written; order matters */
+    struct redirection *redirs; /* any kind, in the order written. The order matters. */
     size_t nredirs;
     struct if_branch *branches; /* if: the if and every elif */
     size_t nbranches;
     struct list *cond;    /* while, until */
-    struct list *body;    /* while, until, for; for if, the else part (or NULL) */
+    struct list *body;    /* the body of while, until and for, or if's else part (or NULL) */
     char *var;            /* for: the variable */
-    bool has_in;          /* for: false means `for x; do`, which loops over "$@" */
+    bool has_in;          /* for: false for `for x; do`, a loop over "$@" */
 };
 
 /* When a pipeline in an and-or runs, decided by the status before it. */
@@ -134,10 +134,10 @@ enum parse_status {
 };
 
 /*
- * Parses text, which may hold several lines. On PARSE_OK, *out is a new
- * list to free with list_free. Otherwise *out is NULL, and for
- * PARSE_INCOMPLETE and PARSE_SYNTAX err says what's wrong, e.g.
- * "syntax error near '|'". On PARSE_INCOMPLETE the shell reads another
+ * Parses text. It may hold several lines. On PARSE_OK, *out is a new list
+ * to free with list_free. Otherwise *out is NULL. For PARSE_INCOMPLETE and
+ * PARSE_SYNTAX, err says what's wrong, e.g. "syntax error near '|'". On
+ * PARSE_INCOMPLETE the shell reads another
  * line, adds it to text and calls this again.
  */
 enum parse_status parse_program(const char *text, struct list **out,

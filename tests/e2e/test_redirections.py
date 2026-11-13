@@ -141,7 +141,7 @@ def test_other_fd_numbers(run, workdir):
 
 def test_redirecting_fd_10_does_not_break_the_shell(run, workdir):
     # While echo runs, the shell keeps its own stdout at fd 10. Then 10> asks
-    # for fd 10 too, so the shell has to move its copy out of the way first.
+    # for fd 10 too. The shell has to move its copy out of the way first.
     result = run(stdin="echo hi > f 10> ten\necho after\n")
     assert read(workdir / "f") == "hi\n"
     assert (workdir / "ten").exists()

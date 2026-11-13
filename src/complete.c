@@ -124,8 +124,8 @@ static bool starts_with(const char *s, const char *prefix)
     return strncmp(s, prefix, strlen(prefix)) == 0;
 }
 
-/* A name in a folder is offered when it starts with what's typed, and a
- * dot file only when what's typed starts with a dot too. */
+/* A name in a folder is offered when it starts with what's typed. A dot
+ * file is offered only when what's typed starts with a dot too. */
 static bool offered(const char *name, const char *typed)
 {
     if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0)
@@ -236,8 +236,8 @@ void complete_find(const char *word, size_t len, bool command, const char *path,
     free(typed);
     if (m->len == 0)
         return;
-    /* sorted, and a name found twice (a built-in and a program in PATH,
-     * or two PATH folders) only once */
+    /* sorted. A name found twice (a built-in and a program in PATH, or two
+     * PATH folders) is kept once. */
     qsort(m->items, m->len, sizeof *m->items, by_show);
     for (size_t i = 0; i < m->len; i++) {
         if (kept > 0 && strcmp(m->items[kept - 1].insert, m->items[i].insert) == 0) {

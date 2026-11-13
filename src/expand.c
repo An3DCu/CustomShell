@@ -17,8 +17,8 @@
  *   FROM_SPLIT   from an unquoted $X: split on IFS
  *   FROM_QUOTED  inside quotes, escaped, or from ~: left alone
  *
- * Pathname expansion uses the same marks: only FROM_WORD and FROM_SPLIT
- * characters can act as *, ? or [, so "*" and \* stay a plain *.
+ * Pathname expansion uses the same marks. Only FROM_WORD and FROM_SPLIT
+ * characters can act as *, ? or [. "*" and \* stay a plain *.
  */
 enum origin {
     FROM_WORD,
@@ -32,18 +32,18 @@ enum mode {
     MODE_ASSIGN, /* assignment values: one string, ~ after : too */
 };
 
-/* "$@" gives one word per parameter, even inside quotes, so the text has
- * to say where a word must end whatever IFS is: a break. In "$@" each
- * parameter is a word, even an empty one; in an unquoted $@ an empty one
- * disappears. */
+/* "$@" gives one word per parameter, even inside quotes. The text has to
+ * say where a word must end whatever IFS is. A break does that. In "$@"
+ * each parameter is a word, even an empty one. In an unquoted $@ an empty
+ * one disappears. */
 struct field_break {
     size_t pos;
     bool quoted;
 };
 
 /* The text so far, with an origin per byte. quotes[] holds every position
- * where a pair of quotes started: "" adds no bytes, but still means "there
- * is a word here", so `""` is one empty argument while an empty $X is none. */
+ * where a pair of quotes started. "" adds no bytes. It still means "there
+ * is a word here". `""` is one empty argument, while an empty $X is none. */
 struct xbuf {
     char *text;
     unsigned char *origin;
@@ -169,8 +169,8 @@ static const char *positional(const struct shell *sh, const char *digits, size_t
     return sh->params.items[index - 1];
 }
 
-/* $?, $$, $#, $0 and $1 to $9 (or ${10} and up) into value, which may point
- * into buf. False if name isn't one of them; $@ and $* are handled apart. */
+/* $?, $$, $#, $0 and $1 to $9 (or ${10} and up) into value. value may point
+ * into buf. False if name isn't one of them. $@ and $* are handled apart. */
 static bool special_value(const struct shell *sh, const char *name, size_t n,
                           char *buf, size_t size, const char **value)
 {
@@ -251,7 +251,7 @@ static const char *lookup(const struct shell *sh, const char *name, size_t n)
 }
 
 /*
- * At word[*i], which is a $. Adds the value with origin o (FROM_SPLIT outside
+ * At word[*i], a $. Adds the value with origin o (FROM_SPLIT outside
  * quotes, FROM_QUOTED inside), or the $ itself when no name follows, as in
  * `echo $` or `echo 5$`. An unset variable adds nothing.
  */
@@ -325,11 +325,11 @@ static bool backquote_error(char *err, size_t errlen)
 }
 
 /*
- * Steps 1, 2 and 5 in one pass over the word: quotes and backslashes are
- * read and dropped, ~ and $ are replaced, and every byte that goes into b is
+ * Steps 1, 2 and 5 in one pass over the word. Quotes and backslashes are
+ * read and dropped. ~ and $ are replaced. Every byte that goes into b is
  * marked with where it came from. The quoting rules are POSIX's:
  *   'single'   everything inside is literal
- *   "double"   $ still expands; a backslash only escapes $ ` " \ and newline
+ *   "double"   $ still expands. A backslash only escapes $ ` " \ and newline
  *   \x         outside quotes, x is literal
  *   \newline   removed entirely (the line continues)
  */
@@ -396,8 +396,8 @@ static bool scan_word(const struct shell *sh, const char *w, struct xbuf *b,
 /*
  * One finished field, text[from, to). If it has an unquoted *, ? or [...]
  * and some file names match, those go to out instead of the field. With no
- * match the field stays as typed, like dash: `ls *.nope` passes "*.nope"
- * on, and ls says it doesn't exist.
+ * match the field stays as typed, like dash. `ls *.nope` passes "*.nope"
+ * on. ls then says it doesn't exist.
  */
 static void add_field(const struct xbuf *b, size_t from, size_t to, struct strvec *out)
 {
@@ -426,13 +426,12 @@ static bool is_ifs_space(const char *ifs, char c)
 
 /*
  * POSIX field splitting, on FROM_SPLIT bytes only:
- *   - IFS spaces, tabs and newlines in a row are one separator, and at the
- *     start or end of the text they make no empty field
- *   - any other IFS character is a separator on its own, so with IFS=:
- *     "a::b" gives a, "" and b, but a trailing ":" adds nothing
- *   - unset IFS means space, tab and newline; an empty IFS splits nothing
- * A field is kept if it has bytes or quotes, so `""` stays and an empty $X
- * goes.
+ *   - IFS spaces, tabs and newlines in a row are one separator. At the
+ *     start or end of the text they make no empty field.
+ *   - any other IFS character is a separator on its own. With IFS=:
+ *     "a::b" gives a, "" and b. A trailing ":" adds nothing.
+ *   - unset IFS means space, tab and newline. An empty IFS splits nothing.
+ * A field is kept if it has bytes or quotes. `""` stays. An empty $X goes.
  */
 static void split_fields(const struct shell *sh, const struct xbuf *b, struct strvec *out)
 {
@@ -549,8 +548,8 @@ static bool expand_list(struct shell *sh, char *const *words, size_t nwords,
 bool expand_command(struct shell *sh, char *const *words, size_t nwords,
                     struct strvec *out, char *err, size_t errlen)
 {
-    /* Only when typed as plain `export`: POSIX calls it a declaration
-     * utility, and dash and bash both do this. */
+    /* Only when typed as plain `export`. POSIX calls it a declaration
+     * utility. dash and bash both do this. */
     bool declaration = nwords > 0 && strcmp(words[0], "export") == 0;
 
     return expand_list(sh, words, nwords, declaration, out, err, errlen);

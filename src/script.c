@@ -55,7 +55,7 @@ static void repaint_more(void *unused)
     fputs("> ", stderr);
 }
 
-/* more: the command isn't finished, and "> " was printed instead of the
+/* more: the command isn't finished. "> " was printed instead of the
  * prompt. At a terminal the editor reads the line, unless TERM says it
  * can't draw (dumb or unset). */
 static ssize_t read_line(struct shell *sh, struct reader *r, bool more, char **line, size_t *cap)
@@ -121,8 +121,8 @@ static void run_text(struct shell *sh, const struct list *list)
     run_list(sh, list);
     explain_status(sh, sh->status);
     sh->explaining = was;
-    /* The terminal shows ^C but no newline; start the prompt on a fresh
-     * line, as bash does. */
+    /* The terminal shows ^C but no newline. The prompt starts on a fresh
+     * line, as in bash. */
     if (sh->interactive && sh->interrupted)
         fputc('\n', stderr);
 }
@@ -211,7 +211,7 @@ int script_run(struct shell *sh, struct reader *r)
             continue;
         }
         sh->unit_line = unit;
-        jobs_reap(sh); /* in a script too, so finished jobs don't stay zombies */
+        jobs_reap(sh); /* in a script too. Finished jobs don't stay zombies. */
         run_text(sh, list);
         list_free(list);
         if (sh->exiting)

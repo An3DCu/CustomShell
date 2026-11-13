@@ -9,8 +9,8 @@
 #include "vars.h"
 #include "xalloc.h"
 
-/* Reads the tokens left to right; *pos is the next one. TOK_END is always
- * last, so looking one token ahead of anything else is safe. */
+/* Reads the tokens left to right. *pos is the next one. TOK_END is always
+ * last. Looking one token ahead of anything else is then safe. */
 struct parser {
     const struct token_list *tokens;
     const char *text; /* what was lexed, for the text of a background job */
@@ -47,7 +47,7 @@ static void skip_newlines(struct parser *p)
 }
 
 /* An unquoted reserved word: the token's text is exactly the word. A
- * quoted "if" keeps its quotes in the text, so it never matches. */
+ * quoted "if" keeps its quotes in the text. It never matches. */
 static bool is_reserved(const struct token *tok, const char *word)
 {
     return tok->type == TOK_WORD && strcmp(tok->text, word) == 0;
@@ -83,7 +83,8 @@ static enum parse_status unexpected(struct parser *p, const struct token *tok)
 }
 
 /* After |, && or ||, newlines may follow before the next command. If only
- * newlines follow, the command goes on in the next line: incomplete. */
+ * newlines follow, the command goes on in the next line. The text is
+ * incomplete then. */
 static bool continues_on_next_line(struct parser *p, const struct token *op)
 {
     skip_newlines(p);
@@ -102,8 +103,9 @@ static void push_word(char ***list, size_t *n, const char *text)
     (*list)[*n] = NULL;
 }
 
-/* NAME=value with a plain, unquoted name: X=1 and X="a b", but not "X"=1
- * or 1X=1. Only the name has to be plain; the value can be anything. */
+/* NAME=value with a plain, unquoted name. X=1 and X="a b" are assignments.
+ * "X"=1 and 1X=1 aren't. Only the name has to be plain. The value can be
+ * anything. */
 static bool is_assignment(const char *word)
 {
     size_t n = var_name_len(word);
@@ -137,7 +139,7 @@ static bool starts_command(enum token_type type)
 static enum parse_status parse_list(struct parser *p, struct list *list, const char *closer);
 
 /* command = ( word | redirection ) { word | redirection }
- * Words like NAME=value before the command name are assignments; after it,
+ * Words like NAME=value before the command name are assignments. After it,
  * they're ordinary arguments (`echo X=1` prints X=1). */
 static enum parse_status parse_command(struct parser *p, struct command *cmd)
 {
@@ -163,8 +165,8 @@ static enum parse_status parse_command(struct parser *p, struct command *cmd)
     }
 }
 
-/* A list inside a compound command, which must not be empty: `if; then`
- * and `then fi` are syntax errors. closer is the word it waits for. */
+/* A list inside a compound command. It must not be empty. `if; then` and
+ * `then fi` are syntax errors. closer is the word it waits for. */
 static enum parse_status parse_part(struct parser *p, struct list **list, const char *closer)
 {
     enum parse_status status;
@@ -285,9 +287,9 @@ static enum parse_status parse_compound(struct parser *p, struct command *cmd)
     const struct token *tok = peek(p);
     enum parse_status status;
 
-    /* Parsing, running and freeing all recurse once per level, so a few
+    /* Parsing, running and freeing all recurse once per level. A few
      * hundred thousand levels would run out of stack. 1000 is far past any
-     * real script and safe in every build, the sanitizers' too. */
+     * script people write. It's safe in every build, the sanitizers' too. */
     if (p->depth == MAX_NESTING) {
         snprintf(p->err, p->errlen, "nested more than %d levels deep", MAX_NESTING);
         return PARSE_SYNTAX;
@@ -377,8 +379,8 @@ static enum parse_status parse_and_or(struct parser *p, struct and_or *ao)
         if (status != PARSE_OK)
             return status;
 
-        /* The text ends where its last token ends (always a word: a
-         * command, an argument, a redirection's target or fi/done), so a
+        /* The text ends where its last token ends. That's always a word, a
+         * command, an argument, a redirection's target or fi/done. A
          * comment after it isn't part of it. */
         tok = &p->tokens->items[p->pos - 1];
         pl->text = trimmed(p->text + start, tok->pos + strlen(token_spelling(tok)) - start);
@@ -397,8 +399,8 @@ static enum parse_status parse_and_or(struct parser *p, struct and_or *ao)
 
 /* list = and_or separated by ; or newlines, with an optional ; at the end.
  * At the top (closer NULL) it runs to the end of the text. Inside a
- * compound it stops before the reserved word that ends it, and if the text
- * ends first the command isn't finished: "missing 'fi'". */
+ * compound it stops before the reserved word that ends it. If the text
+ * ends first, the command isn't finished: "missing 'fi'". */
 static enum parse_status parse_list(struct parser *p, struct list *list, const char *closer)
 {
     skip_newlines(p);

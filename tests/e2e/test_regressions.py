@@ -11,8 +11,8 @@ import pexpect
 
 
 def test_cat_keeps_zero_bytes(tools, workdir):
-    # Old: cat read lines into C strings, so each line stopped at its first
-    # 0 byte and "ab\0cd" came out as "ab".
+    # Old: cat read lines into C strings. Each line stopped at its first 0
+    # byte. "ab\0cd" came out as "ab".
     (workdir / "nul.txt").write_bytes(b"ab\0cd\nsecond line\n")
     result = subprocess.run([str(tools / "cat"), "nul.txt"], capture_output=True, cwd=workdir,
                             timeout=10)
@@ -20,14 +20,14 @@ def test_cat_keeps_zero_bytes(tools, workdir):
 
 
 def test_no_space_before_a_redirection(run, workdir):
-    # Old: the word before > was never ended, so the file held "hi>out.txt".
+    # Old: the word before > was never ended. The file held "hi>out.txt".
     run(stdin="echo hi>out.txt\n")
     assert (workdir / "out.txt").read_text() == "hi\n"
 
 
 def test_echo_without_newline_into_a_file(run, workdir):
     # Old: "hi" stayed in stdio's buffer and came out on the terminal after
-    # stdout was put back, so the file was empty.
+    # stdout was put back. The file was empty.
     result = run(stdin="echo -n hi > f.txt\necho [end]\n")
     assert (workdir / "f.txt").read_text() == "hi"
     assert result.stdout == "[end]\n"
@@ -76,9 +76,9 @@ def test_ctrl_c_does_not_kill_the_shell(terminal, in_front):
 
 
 def test_piped_input_shows_no_prompt_and_prints_nothing_twice(run):
-    # Old: the prompt went into the output, and after a failed command
-    # everything before it came out twice: fork copied stdio's buffer and
-    # the failed child flushed its copy on exit().
+    # Old: the prompt went into the output. After a failed command
+    # everything before it came out twice. fork copied stdio's buffer. The
+    # failed child flushed its copy on exit().
     result = run(stdin="echo one\nnosuchcommand\necho two\n")
     assert result.stdout == "one\ntwo\n"
     assert result.stderr == "acsh: nosuchcommand: command not found\n"

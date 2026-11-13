@@ -45,9 +45,9 @@ struct edit {
     size_t pos;  /* the cursor, as an offset into text */
     size_t row;  /* the screen row of the cursor, counted from the prompt's */
     int utf8_left; /* bytes still to come of a UTF-8 character being typed */
-    bool stale;    /* the screen is behind the text: a redraw was put off */
-    const struct history *hist; /* for Up, Down and Ctrl+R; may be NULL */
-    size_t hist_at; /* the entry shown; hist->len for the line being typed */
+    bool stale;    /* the screen is behind the text after a put-off redraw */
+    const struct history *hist; /* for Up, Down and Ctrl+R, or NULL */
+    size_t hist_at; /* the entry shown, or hist->len for the line being typed */
     char *draft;    /* the line being typed, kept while Up shows older ones */
     size_t draft_len;
     char *out;   /* what to write next, sent in one write() to avoid flicker */
@@ -117,7 +117,7 @@ static void flush(struct edit *e)
     e->out_len = 0;
 }
 
-/* The terminal's width, asked each time, so a resized window just works. */
+/* The terminal's width. It's asked each time, for a window that gets resized. */
 static size_t columns(void)
 {
     struct winsize ws;
@@ -129,9 +129,9 @@ static size_t columns(void)
 
 /*
  * Draws the prompt's last line and the text again, and puts the cursor at
- * pos. A long line wraps over several rows, so first go up to the prompt's
- * row, clear everything below, and write it all out. The terminal leaves
- * the cursor after the end, and from there it moves up and right to pos.
+ * pos. A long line wraps over several rows. Drawing starts at the prompt's
+ * row. Everything below is cleared, then it's all written out. The terminal
+ * leaves the cursor after the end. From there it moves up and right to pos.
  */
 static void redraw(struct edit *e)
 {
@@ -164,8 +164,8 @@ static bool input_waiting(const struct edit *e)
 }
 
 /* A paste arrives as many keys at once. Drawing the whole line after each
- * one takes time that grows with the square of its length (minutes for a
- * few pages), so while more keys are waiting, the drawing waits too. */
+ * one takes time that grows with the square of its length. That's minutes
+ * for a few pages. While more keys are waiting, the drawing waits too. */
 static void redraw_when_idle(struct edit *e)
 {
     if (input_waiting(e))
@@ -273,10 +273,10 @@ static void set_text(struct edit *e, const char *s, size_t n)
     e->len = e->pos = n;
 }
 
-/* Up (older) or Down (newer). An entry is only ever copied, so a change
- * made to it is gone when another one is shown, and history stays as it
- * was. The line being typed before the first Up is the draft, shown again
- * after the newest entry. */
+/* Up (older) or Down (newer). An entry is only ever copied into the line. A
+ * change made to the copy is gone when another one is shown. History stays
+ * as it was. The line being typed before the first Up is the draft, shown
+ * again after the newest entry. */
 static void history_step(struct edit *e, bool older)
 {
     const struct history *h = e->hist;
@@ -298,11 +298,11 @@ static void history_step(struct edit *e, bool older)
 
 /*
  * Ctrl+R. The query is typed into the prompt's place, `search: sle  ->
- * sleep 30 &`, and each key looks again, from the newest entry back.
- * Ctrl+R again goes to the next older entry that's different. Returns the
- * key to act on once the search is over: Enter runs what's shown, Ctrl+C
- * drops it, an arrow key keeps it for editing; Ctrl+G returns 0 and brings
- * back the line from before the search.
+ * sleep 30 &`. Each key looks again, from the newest entry back. Ctrl+R
+ * again goes to the next older entry that's different. Returns the key to
+ * act on once the search is over. Enter runs what's shown. Ctrl+C drops it.
+ * An arrow key keeps it for editing. Ctrl+G returns 0 and brings back the
+ * line from before the search.
  */
 static int search(struct edit *e)
 {
@@ -313,7 +313,7 @@ static int search(struct edit *e)
     size_t before_len = e->len;
     char query[256] = "";
     size_t qlen = 0;
-    size_t at = h->len; /* the entry shown; h->len for none */
+    size_t at = h->len; /* the entry shown, or h->len for none */
     char *shown = NULL;
     int key;
 
@@ -382,7 +382,7 @@ static int search(struct edit *e)
     e->prompt = prompt;
     e->plen = plen;
     e->pos = e->len;
-    /* Up and Down go on from the entry found; the line from before the
+    /* Up and Down go on from the entry found. The line from before the
      * search is the one after the newest. */
     e->hist_at = at;
     free(e->draft);
@@ -517,8 +517,8 @@ static void cycle(struct edit *e, bool back)
     e->comp_len = strlen(insert);
 }
 
-/* A key other than Tab keeps the match shown; a file or command gets its
- * space then, a folder doesn't. */
+/* A key other than Tab keeps the match shown. A file or command gets its
+ * space then. A folder doesn't. */
 static void keep_match(struct edit *e)
 {
     if (!e->comp.items[e->comp_at].dir)
@@ -649,13 +649,13 @@ static int handle(struct edit *e, int key)
     case -1:
         return -1;
     default:
-        /* text, UTF-8 bytes too; other control keys and unknown sequences
-         * do nothing, quietly */
+        /* text, UTF-8 bytes too. Other control keys and unknown sequences
+         * do nothing. */
         if (key < ' ' || key >= 256 || key == BACKSPACE)
             return 0;
         insert(e, (char)key);
         if (utf8_part(e, (unsigned char)key))
-            return 0; /* half a letter would show as junk: wait for the rest */
+            return 0; /* wait for the rest. Half a letter would show as junk. */
     }
     redraw_when_idle(e);
     return 0;
@@ -670,7 +670,7 @@ ssize_t editor_read_line(int fd, const struct editor_config *cfg, char **line, s
         .plen = strlen(cfg->prompt),
         .hist = cfg->hist,
         .hist_at = cfg->hist ? cfg->hist->len : 0,
-        /* never NULL, so pointer sums like text + pos are always defined */
+        /* never NULL. Pointer sums like text + pos are then always defined. */
         .text = xmalloc(128),
         .cap = 128,
         .out = xmalloc(256),
@@ -691,7 +691,8 @@ ssize_t editor_read_line(int fd, const struct editor_config *cfg, char **line, s
     raw.c_lflag &= ~(tcflag_t)(ECHO | ICANON | IEXTEN | ISIG);
     raw.c_cc[VMIN] = 1;
     raw.c_cc[VTIME] = 0;
-    /* TCSADRAIN, not TCSAFLUSH: keys typed ahead stay for this line. */
+    /* TCSADRAIN keeps the keys typed ahead for this line. TCSAFLUSH would
+     * drop them. */
     signals_guard_terminal(fd, &cooked);
     tcsetattr(fd, TCSADRAIN, &raw);
 

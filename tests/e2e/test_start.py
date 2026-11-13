@@ -27,7 +27,7 @@ def test_unknown_option(run):
 
 
 def test_runs_in_a_terminal(acsh):
-    """pexpect gives acsh a real pseudo-terminal, the way later tests send Ctrl+C and keys."""
+    """pexpect gives acsh a pseudo-terminal. Later tests send Ctrl+C and keys through one."""
     child = pexpect.spawn(acsh, ["--help"], encoding="utf-8", timeout=5)
     child.expect("usage: acsh")
     child.expect(pexpect.EOF)

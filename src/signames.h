@@ -7,7 +7,7 @@
  */
 
 /* The signal that text names: TERM, SIGTERM, term or 15. -1 if it isn't
- * a name or a whole number; a number isn't checked any further. */
+ * a name or a whole number. A number isn't checked any further. */
 int signame_parse(const char *text);
 
 /* The name of signal sig without SIG, like "TERM", or NULL if it has none

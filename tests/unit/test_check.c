@@ -1,8 +1,8 @@
 /*
- * Tests for the harness itself: the comparisons the macros rely on, and that
- * passing checks don't count as failures. (A failing check can't be tested
- * here without making this file fail, so that part is checked by hand: break
- * a CHECK and run make test-unit.)
+ * Tests for the harness itself. They cover the comparisons the macros rely
+ * on. They also check that passing checks don't count as failures. A
+ * failing check can't be tested here without making this file fail. That
+ * part is checked by hand: break a CHECK and run make test-unit.
  */
 #include "check.h"
 

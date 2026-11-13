@@ -1,7 +1,7 @@
 """File name patterns, checked against dash on a folder of awkward names.
 
 Both shells run the same line in the same folder (nothing here writes to
-it), and their output and exit status have to be the same. printf '[%s]'
+it). Their output and exit status have to be the same. printf '[%s]'
 shows exactly where one argument ends and the next begins.
 """
 

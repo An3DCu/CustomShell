@@ -33,8 +33,8 @@ bool var_name_valid(const char *s)
     return n > 0 && s[n] == '\0';
 }
 
-/* A linear search. A shell has a few dozen variables, and a list in the
- * order they were made is easy to check in a debugger. */
+/* A linear search. A shell has a few dozen variables. A list in the order
+ * they were made is easy to check in a debugger. */
 static struct var *find(const struct vars *v, const char *name)
 {
     for (size_t i = 0; i < v->len; i++) {
@@ -62,10 +62,10 @@ void vars_init(struct vars *v, char **env)
         char *name;
 
         if (eq == NULL || eq == env[i])
-            continue; /* not NAME=value; nothing to keep */
+            continue; /* not NAME=value, nothing to keep */
         name = xstrndup(env[i], (size_t)(eq - env[i]));
         if (find(v, name) != NULL) {
-            free(name); /* a second copy in environ: the first one wins, as getenv */
+            free(name); /* a second copy in environ. The first one wins, as in getenv. */
             continue;
         }
         add(v, name, xstrdup(eq + 1), true);
@@ -98,7 +98,7 @@ void vars_set(struct vars *v, const char *name, const char *value)
         add(v, xstrdup(name), xstrdup(value), false);
         return;
     }
-    copy = xstrdup(value); /* before the free: value may point into the old one */
+    copy = xstrdup(value); /* before the free. value may point into the old one. */
     free(var->value);
     var->value = copy;
 }
@@ -121,7 +121,7 @@ void vars_unset(struct vars *v, const char *name)
         return;
     free(var->name);
     free(var->value);
-    /* Keep the order: move the rest down instead of the last into the gap. */
+    /* Keep the order. The rest moves down. The last one doesn't fill the gap. */
     i = (size_t)(var - v->items);
     memmove(&v->items[i], &v->items[i + 1], (v->len - i - 1) * sizeof *v->items);
     v->len--;
