@@ -150,6 +150,8 @@ void history_add(struct history *h, const char *line)
         size_t len = strlen(line);
         char *buf = xmalloc(len + 1);
 
+        /* buf is for write(). It ends in the newline and has no 0. */
+        /* NOLINTNEXTLINE(bugprone-not-null-terminated-result) */
         memcpy(buf, line, len);
         buf[len] = '\n';
         (void)!write(fd, buf, len + 1);

@@ -56,6 +56,8 @@ static char *own_path(void)
             return NULL;
         }
         if ((size_t)n < size) { /* readlink doesn't add the final 0 */
+            /* buf holds size bytes. clang-tidy can't see that through xmalloc. */
+            /* NOLINTNEXTLINE(clang-analyzer-security.ArrayBound) */
             buf[n] = '\0';
             return buf;
         }

@@ -11,6 +11,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include "analyzer.h"
 #include "builtins.h"
 #include "error.h"
 #include "expand.h"
@@ -543,7 +544,10 @@ static void background_child_setup(struct shell *sh, bool first)
 }
 
 /* bg_text is the job's text when the pipeline runs in the background (cmd &),
- * or NULL to run it in front and wait. */
+ * or NULL to run it in front and wait. gcc's analyzer follows a forked child
+ * into the pipelines that child runs. It reports their pipe ends as leaked.
+ * The child's _exit closes them (analyzer.h). */
+FD_LEAK_IS_FINE_BEGIN
 static int run_forked(struct shell *sh, const struct pipeline *pl, char **first_argv,
                       const char *bg_text)
 {
@@ -690,6 +694,7 @@ static int run_forked(struct shell *sh, const struct pipeline *pl, char **first_
     status = jobs_run_in_front(sh, sh->job_control ? pgid : 0, pids, started, pl->text);
     return failed ? 1 : status;
 }
+FD_LEAK_IS_FINE_END
 
 static int run_pipeline(struct shell *sh, const struct pipeline *pl)
 {

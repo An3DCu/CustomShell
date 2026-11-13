@@ -20,7 +20,9 @@
  */
 
 /* The sticky bit (S_ISVTX) isn't in base POSIX but in its X/Open part,
- * XSI. Version 700 includes everything POSIX.1-2008 has. */
+ * XSI. Version 700 includes everything POSIX.1-2008 has. The name starts
+ * with an underscore. A program is still meant to define it. */
+/* NOLINTNEXTLINE(bugprone-reserved-identifier,cert-dcl37-c,cert-dcl51-cpp) */
 #define _XOPEN_SOURCE 700
 
 #include <dirent.h>

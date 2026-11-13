@@ -203,6 +203,8 @@ static char *join(const char *prefix, const char *name, size_t n, const char *ta
     size_t plen = strlen(prefix), tlen = strlen(tail);
     char *s = xmalloc(plen + n + tlen + 1);
 
+    /* The last copy brings tail's 0 along. clang-tidy only looks at this one. */
+    /* NOLINTNEXTLINE(bugprone-not-null-terminated-result) */
     memcpy(s, prefix, plen);
     memcpy(s + plen, name, n);
     memcpy(s + plen + n, tail, tlen + 1);
