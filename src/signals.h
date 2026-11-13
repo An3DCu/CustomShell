@@ -2,6 +2,7 @@
 #define ACSH_SIGNALS_H
 
 #include <stdbool.h>
+#include <termios.h>
 
 /*
  * Ctrl+C sends SIGINT and Ctrl+\ sends SIGQUIT to every process in the
@@ -58,5 +59,15 @@ bool signals_take_interrupt(void);
  * script doesn't call this: signals that were already ignored when it
  * started (under nohup, say) stay ignored for its commands, as POSIX says. */
 void signals_reset_in_child(void);
+
+/*
+ * While the line editor has the terminal in raw mode: a signal that would
+ * end acsh (SIGTERM, SIGHUP, SIGSEGV, ...) first puts the terminal back to
+ * modes, then ends acsh the way it would have. Only signals still at their
+ * default are guarded; ignored ones stay ignored. SIGKILL can't be caught,
+ * so after it the terminal stays raw (`stty sane` fixes it).
+ */
+void signals_guard_terminal(int fd, const struct termios *modes);
+void signals_unguard_terminal(void);
 
 #endif

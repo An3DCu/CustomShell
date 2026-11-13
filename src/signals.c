@@ -5,6 +5,7 @@
 #include <signal.h>
 #include <stddef.h>
 #include <sys/select.h>
+#include <termios.h>
 #include <unistd.h>
 
 static volatile sig_atomic_t got_sigint;
@@ -199,4 +200,48 @@ void signals_reset_in_child(void)
     set_handler(SIGTTOU, SIG_DFL);
     set_handler(SIGCHLD, SIG_DFL);
     change_sigint_mask(SIG_UNBLOCK);
+}
+
+/* ---- the terminal while a line is edited -------------------------------- */
+
+/* The signals that end a process by default and can be caught. */
+static const int fatal_signals[] = {
+    SIGHUP, SIGTERM, SIGALRM, SIGUSR1, SIGUSR2, SIGPIPE, SIGXCPU, SIGXFSZ, SIGVTALRM,
+    SIGPROF, SIGSYS, SIGTRAP, SIGABRT, SIGBUS, SIGFPE, SIGILL, SIGSEGV,
+};
+#define NFATAL (sizeof fatal_signals / sizeof fatal_signals[0])
+
+static int guard_fd = -1;
+static struct termios guard_modes;
+static bool guarded[NFATAL];
+
+/* tcsetattr and raise are both async-signal-safe. SA_RESETHAND has put the
+ * default back already, so the raised signal ends acsh as it would have:
+ * at once, or right after this returns. */
+static void on_fatal(int sig)
+{
+    tcsetattr(guard_fd, TCSANOW, &guard_modes);
+    raise(sig);
+}
+
+void signals_guard_terminal(int fd, const struct termios *modes)
+{
+    guard_fd = fd;
+    guard_modes = *modes;
+    for (size_t i = 0; i < NFATAL; i++) {
+        struct sigaction old;
+
+        guarded[i] = sigaction(fatal_signals[i], NULL, &old) == 0 && old.sa_handler == SIG_DFL;
+        if (guarded[i])
+            set_handler_flags(fatal_signals[i], on_fatal, SA_RESETHAND);
+    }
+}
+
+void signals_unguard_terminal(void)
+{
+    for (size_t i = 0; i < NFATAL; i++) {
+        if (guarded[i])
+            set_handler(fatal_signals[i], SIG_DFL);
+        guarded[i] = false;
+    }
 }
