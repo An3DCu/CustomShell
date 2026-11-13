@@ -7,6 +7,7 @@ sanitizer build.
 
 import os
 import shlex
+import signal
 import subprocess
 import time
 from pathlib import Path
@@ -79,6 +80,14 @@ def run(acsh, workdir):
     return _run
 
 
+def _default_signals():
+    """In the child, before acsh starts: Python ignores SIGPIPE and SIGXFSZ,
+    and a child would keep that. A terminal starts a shell with them at their
+    defaults, and subprocess (the run fixture) puts them back too."""
+    signal.signal(signal.SIGPIPE, signal.SIG_DFL)
+    signal.signal(signal.SIGXFSZ, signal.SIG_DFL)
+
+
 @pytest.fixture
 def terminal(acsh, workdir):
     """Start acsh in a pseudo-terminal, the way a person would use it.
@@ -97,6 +106,7 @@ def terminal(acsh, workdir):
             shlex.quote(acsh),
             cwd=str(cwd or workdir),
             env=_env({**defaults, **(env or {})}, unset),
+            preexec_fn=_default_signals,
             encoding="utf-8",
             timeout=5,
         )

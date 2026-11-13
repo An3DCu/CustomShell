@@ -195,17 +195,51 @@ def test_raw_mode_only_while_a_line_is_typed(editor):
     wait_for(lambda: raw(editor), "raw mode at the next prompt")
 
 
-@pytest.mark.parametrize("how", ["exit", "SIGTERM", "SIGHUP"])
-def test_the_terminal_is_put_back_when_acsh_ends(editor, how):
+def test_the_terminal_is_put_back_after_exit(editor):
     wait_for(lambda: raw(editor), "raw mode at the prompt")
-    if how == "exit":
-        editor.send("exit\r")
-    else:
-        editor.send("half a line")
-        time.sleep(0.2)
-        os.kill(editor.pid, getattr(signal, how))
+    editor.send("exit\r")
     editor.expect(pexpect.EOF)
     assert not raw(editor)
+
+
+# Every signal that ends a process by default and can be caught: the ones the
+# guard in signals.c takes over while a line is typed.
+FATAL = ["SIGHUP", "SIGTERM", "SIGALRM", "SIGUSR1", "SIGUSR2", "SIGPIPE", "SIGXCPU",
+         "SIGXFSZ", "SIGVTALRM", "SIGPROF", "SIGSYS", "SIGTRAP", "SIGABRT", "SIGBUS",
+         "SIGFPE", "SIGILL", "SIGSEGV"]
+
+
+def not_at_default(pid, sig):
+    """Whether acsh has sig ignored or handled while no line is being typed."""
+    masks = {}
+    with open(f"/proc/{pid}/status") as status:
+        for line in status:
+            name, _, value = line.partition(":")
+            if name in ("SigIgn", "SigCgt"):
+                masks[name] = int(value, 16)
+    return bool((masks["SigIgn"] | masks["SigCgt"]) & (1 << (sig - 1)))
+
+
+@pytest.mark.parametrize("name", FATAL)
+def test_the_terminal_is_put_back_when_a_signal_ends_acsh(editor, name):
+    sig = getattr(signal, name)
+    # Only a signal still at its default is guarded. The sanitizers handle
+    # SIGSEGV, SIGBUS and SIGFPE themselves, and valgrind catches them all;
+    # those runs skip them. Look while a command runs, when the guard is off.
+    editor.send("sleep 0.3\r")
+    wait_for(lambda: not raw(editor), "the terminal back while sleep runs")
+    skip = not_at_default(editor.pid, sig)
+    editor.expect(r"\r\n" + PROMPT)
+    if skip:
+        pytest.skip(f"{name} isn't at its default in this run")
+    wait_for(lambda: raw(editor), "raw mode at the prompt")
+    editor.send("half a line")
+    time.sleep(0.2)
+    os.kill(editor.pid, sig)
+    editor.expect(pexpect.EOF)
+    assert not raw(editor)
+    editor.close()
+    assert editor.signalstatus == sig  # and it ended the way the signal says
 
 
 @pytest.mark.parametrize("term", ["dumb", None])
