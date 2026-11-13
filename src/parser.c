@@ -17,7 +17,10 @@ struct parser {
     size_t pos;
     char *err;
     size_t errlen;
+    int depth; /* if, while, until and for inside each other, so far */
 };
+
+#define MAX_NESTING 1000
 
 static const struct token *peek(const struct parser *p)
 {
@@ -93,8 +96,8 @@ static bool continues_on_next_line(struct parser *p, const struct token *op)
 /* Adds text to a NULL-terminated list of n words. */
 static void push_word(char ***list, size_t *n, const char *text)
 {
-    /* +2: room for the new word and the NULL after it. */
-    *list = xreallocarray(*list, *n + 2, sizeof **list);
+    /* room for the new word, and for the NULL after it at index n + 1 */
+    *list = xgrow(*list, *n + 1, sizeof **list);
     (*list)[(*n)++] = xstrdup(text);
     (*list)[*n] = NULL;
 }
@@ -122,7 +125,7 @@ static void add_redirection(struct command *cmd, const struct token *op,
     }
     if (op->io_number >= 0)
         r.fd = op->io_number;
-    cmd->redirs = xreallocarray(cmd->redirs, cmd->nredirs + 1, sizeof *cmd->redirs);
+    cmd->redirs = xgrow(cmd->redirs, cmd->nredirs, sizeof *cmd->redirs);
     cmd->redirs[cmd->nredirs++] = r;
 }
 
@@ -191,7 +194,7 @@ static enum parse_status parse_if(struct parser *p, struct command *cmd)
     for (;;) {
         struct if_branch *b;
 
-        cmd->branches = xreallocarray(cmd->branches, cmd->nbranches + 1, sizeof *cmd->branches);
+        cmd->branches = xgrow(cmd->branches, cmd->nbranches, sizeof *cmd->branches);
         b = &cmd->branches[cmd->nbranches++];
         *b = (struct if_branch){ 0 };
         if ((status = parse_part(p, &b->cond, "then")) != PARSE_OK
@@ -282,6 +285,14 @@ static enum parse_status parse_compound(struct parser *p, struct command *cmd)
     const struct token *tok = peek(p);
     enum parse_status status;
 
+    /* Parsing, running and freeing all recurse once per level, so a few
+     * hundred thousand levels would run out of stack. 1000 is far past any
+     * real script and safe in every build, the sanitizers' too. */
+    if (p->depth == MAX_NESTING) {
+        snprintf(p->err, p->errlen, "nested more than %d levels deep", MAX_NESTING);
+        return PARSE_SYNTAX;
+    }
+    p->depth++;
     if (is_reserved(tok, "if")) {
         cmd->kind = CMD_IF;
         status = parse_if(p, cmd);
@@ -292,6 +303,7 @@ static enum parse_status parse_compound(struct parser *p, struct command *cmd)
         cmd->kind = is_reserved(tok, "while") ? CMD_WHILE : CMD_UNTIL;
         status = parse_while(p, cmd);
     }
+    p->depth--;
     if (status != PARSE_OK)
         return status;
     while (token_is_redirection(peek(p)->type)) {
@@ -328,8 +340,7 @@ static enum parse_status parse_pipeline(struct parser *p, struct pipeline *pl)
         tok = peek(p);
         if (!starts_command(tok->type) || ends_list(tok))
             return unexpected(p, tok);
-        pl->commands = xreallocarray(pl->commands, pl->ncommands + 1,
-                                     sizeof *pl->commands);
+        pl->commands = xgrow(pl->commands, pl->ncommands, sizeof *pl->commands);
         pl->commands[pl->ncommands] = (struct command){ .line = tok->line };
         if (starts_compound(tok))
             status = parse_compound(p, &pl->commands[pl->ncommands++]);
@@ -358,8 +369,7 @@ static enum parse_status parse_and_or(struct parser *p, struct and_or *ao)
         enum parse_status status;
         size_t start;
 
-        ao->pipelines = xreallocarray(ao->pipelines, ao->npipelines + 1,
-                                      sizeof *ao->pipelines);
+        ao->pipelines = xgrow(ao->pipelines, ao->npipelines, sizeof *ao->pipelines);
         pl = &ao->pipelines[ao->npipelines++];
         *pl = (struct pipeline){ .run_if = run_if };
         start = peek(p)->pos;
@@ -403,7 +413,7 @@ static enum parse_status parse_list(struct parser *p, struct list *list, const c
 
         struct and_or *ao;
 
-        list->items = xreallocarray(list->items, list->nitems + 1, sizeof *list->items);
+        list->items = xgrow(list->items, list->nitems, sizeof *list->items);
         ao = &list->items[list->nitems++];
         *ao = (struct and_or){ 0 };
         status = parse_and_or(p, ao);

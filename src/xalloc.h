@@ -15,6 +15,12 @@ void *xcalloc(size_t count, size_t size);
  * that would overflow instead of quietly allocating too little. */
 void *xreallocarray(void *p, size_t count, size_t size);
 
+/* For an array that only grows and keeps no capacity of its own: makes
+ * index len usable, doubling the room each time len reaches a power of two,
+ * so adding n items costs about n copies, not n * n. The array must only
+ * ever have grown through this. */
+void *xgrow(void *p, size_t len, size_t size);
+
 char *xstrdup(const char *s);
 
 /* Copies the first n bytes of s and adds a 0. s must have at least n bytes. */
