@@ -12,6 +12,7 @@
 #include "exec.h"
 #include "editor.h"
 #include "explain.h"
+#include "history.h"
 #include "jobs.h"
 #include "input.h"
 #include "parser.h"
@@ -63,8 +64,22 @@ static ssize_t read_line(struct shell *sh, struct reader *r, bool more, char **l
         return read_text_line(r, line, cap);
     if (r->interactive && editor_usable(vars_get(&sh->vars, "TERM")))
         return editor_read_line(r->fd, more ? "> " : prompt_tail(),
-                                more ? repaint_more : repaint_prompt, sh, line, cap);
+                                more ? repaint_more : repaint_prompt, sh, &sh->history, line,
+                                cap);
     return input_read_line(r->fd, line, cap, r->interactive);
+}
+
+/* A line typed at the prompt goes into history, without its newline.
+ * $HISTFILE and $HISTSIZE are read again first, in case they were set. */
+static void remember(struct shell *sh, const char *line, size_t n)
+{
+    char *file = history_file(vars_get(&sh->vars, "HISTFILE"), vars_get(&sh->vars, "HOME"));
+    char *text = xstrndup(line, n > 0 && line[n - 1] == '\n' ? n - 1 : n);
+
+    history_settings(&sh->history, file, history_size(vars_get(&sh->vars, "HISTSIZE")));
+    history_add(&sh->history, text);
+    free(text);
+    free(file);
 }
 
 /* The text of a command that spans lines so far. */
@@ -138,6 +153,8 @@ int script_run(struct shell *sh, struct reader *r)
         n = read_line(sh, r, cmd.len > 0, &line, &cap);
         if (n >= 0)
             r->lines++;
+        if (n > 0 && r->interactive)
+            remember(sh, line, (size_t)n);
         sh->line = r->lines; /* for errors found while reading */
         if (n < 0) {
             if (errno == EINTR) {

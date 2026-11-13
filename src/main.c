@@ -13,6 +13,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "history.h"
 #include "jobs.h"
 #include "script.h"
 #include "shell.h"
@@ -184,8 +185,12 @@ int main(int argc, char **argv)
 
     r.interactive = sh.interactive;
     if (sh.interactive) {
+        char *file = history_file(vars_get(&sh.vars, "HISTFILE"), vars_get(&sh.vars, "HOME"));
+
         jobs_init(&sh); /* first: it may have to wait to be in front */
         signals_init_interactive();
+        history_init(&sh.history, file, history_size(vars_get(&sh.vars, "HISTSIZE")));
+        free(file);
     }
     status = script_run(&sh, &r);
     if (r.fd > STDIN_FILENO)
@@ -193,6 +198,7 @@ int main(int argc, char **argv)
     jobs_hang_up(&sh); /* only with job control: a script's jobs keep running */
 out:
     jobs_free(&sh);
+    history_free(&sh.history);
     strvec_free(&sh.params);
     vars_free(&sh.vars);
     return status;

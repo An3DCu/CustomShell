@@ -171,7 +171,7 @@ def test_a_command_over_two_lines(editor):
 def test_ctrl_l_clears_the_screen(editor):
     editor.send("echo =ab" + "\x0c")
     editor.expect_exact("\x1b[H\x1b[2J")
-    editor.expect(PROMPT)  # the whole prompt again
+    editor.expect(r"\r\n" + PROMPT)  # the whole prompt again, after its first line
     assert run_keys(editor, "c=") == "=abc="
 
 
@@ -191,7 +191,7 @@ def test_raw_mode_only_while_a_line_is_typed(editor):
     wait_for(lambda: raw(editor), "raw mode at the prompt")
     editor.send("sleep 1\r")
     wait_for(lambda: not raw(editor), "the terminal back while a command runs")
-    editor.expect(PROMPT)
+    editor.expect(r"\r\n" + PROMPT)  # the real prompt, not a redraw
     wait_for(lambda: raw(editor), "raw mode at the next prompt")
 
 

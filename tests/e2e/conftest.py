@@ -90,11 +90,13 @@ def terminal(acsh, workdir):
 
     def _start(env=None, unset=(), cwd=None):
         # With no arguments, pexpect splits the command on spaces, and this
-        # repo's path may have some. Quoting keeps it one word.
+        # repo's path may have some. Quoting keeps it one word. The history
+        # file is the test's own, never the real ~/.acsh_history.
+        defaults = {"TERM": "dumb", "HISTFILE": str(workdir / ".acsh_history")}
         child = pexpect.spawn(
             shlex.quote(acsh),
             cwd=str(cwd or workdir),
-            env=_env({"TERM": "dumb", **(env or {})}, unset),
+            env=_env({**defaults, **(env or {})}, unset),
             encoding="utf-8",
             timeout=5,
         )
