@@ -64,10 +64,14 @@ void prompt_print(const struct shell *sh)
         snprintf(status, sizeof status, "  %sexit %d%s", color ? RED : "", sh->status,
                  color ? RESET : "");
 
-    fprintf(stderr, "%s%s@%s%s %s%s%s%s\nacsh%s ",
+    fprintf(stderr, "%s%s@%s%s %s%s%s%s\n%s",
             color ? GREEN : "", user ? user : "?", host, color ? RESET : "",
-            color ? BLUE : "", folder, color ? RESET : "", status,
-            geteuid() == 0 ? "#" : "$");
+            color ? BLUE : "", folder, color ? RESET : "", status, prompt_tail());
     free(folder);
     free(cwd);
+}
+
+const char *prompt_tail(void)
+{
+    return geteuid() == 0 ? "acsh# " : "acsh$ ";
 }

@@ -18,6 +18,10 @@
  */
 void prompt_print(const struct shell *sh);
 
+/* The prompt's second line, where the command is typed: "acsh$ ", or
+ * "acsh# " for root. The line editor prints it again when it redraws. */
+const char *prompt_tail(void);
+
 /* Colors only on a terminal that has them: not when NO_COLOR is set to
  * anything (no-color.org), and not when TERM is unset or "dumb". */
 bool prompt_colors(const char *no_color, const char *term);

@@ -10,6 +10,7 @@
 
 #include "error.h"
 #include "exec.h"
+#include "editor.h"
 #include "explain.h"
 #include "jobs.h"
 #include "input.h"
@@ -40,10 +41,29 @@ static ssize_t read_text_line(struct reader *r, char **line, size_t *cap)
     return (ssize_t)len;
 }
 
-static ssize_t read_line(struct reader *r, char **line, size_t *cap)
+/* For Ctrl+L in the editor: the whole prompt again, or the "> " of a
+ * command that goes on over several lines. */
+static void repaint_prompt(void *sh)
+{
+    prompt_print(sh);
+}
+
+static void repaint_more(void *unused)
+{
+    (void)unused;
+    fputs("> ", stderr);
+}
+
+/* more: the command isn't finished, and "> " was printed instead of the
+ * prompt. At a terminal the editor reads the line, unless TERM says it
+ * can't draw (dumb or unset). */
+static ssize_t read_line(struct shell *sh, struct reader *r, bool more, char **line, size_t *cap)
 {
     if (r->fd < 0)
         return read_text_line(r, line, cap);
+    if (r->interactive && editor_usable(vars_get(&sh->vars, "TERM")))
+        return editor_read_line(r->fd, more ? "> " : prompt_tail(),
+                                more ? repaint_more : repaint_prompt, sh, line, cap);
     return input_read_line(r->fd, line, cap, r->interactive);
 }
 
@@ -115,7 +135,7 @@ int script_run(struct shell *sh, struct reader *r)
         }
         if (cmd.len == 0)
             unit = r->lines + 1;
-        n = read_line(r, &line, &cap);
+        n = read_line(sh, r, cmd.len > 0, &line, &cap);
         if (n >= 0)
             r->lines++;
         sh->line = r->lines; /* for errors found while reading */
