@@ -4,6 +4,8 @@ acsh is a Unix shell in C with its own parser, job control and line editor. `exp
 
 [![CI](https://github.com/An3DCu/CustomShell/actions/workflows/ci.yml/badge.svg)](https://github.com/An3DCu/CustomShell/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) [![C17](https://img.shields.io/badge/C-17-blue.svg)](https://en.cppreference.com/w/c/17)
 
+![A short tour of acsh: a pipe with a glob, explain on a pipeline, Ctrl+Z and fg, Tab completion and Ctrl+R](docs/images/tour.gif)
+
 ## Overview
 
 I use a shell every day. Each command I type goes through fork, exec, pipes and signals. None of that shows. acsh is how I found out what happens in between.
