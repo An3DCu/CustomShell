@@ -162,18 +162,28 @@ static void mode_string(mode_t m, char out[11])
     out[10] = '\0';
 }
 
-/* "Nov  6 14:03" for the last six months, "Nov  6  2025" for anything
- * older or in the future, like GNU ls. */
-static void time_string(time_t t, char *out, size_t size)
+static bool later(const struct timespec *a, const struct timespec *b)
 {
-    static time_t now;
+    return a->tv_sec > b->tv_sec || (a->tv_sec == b->tv_sec && a->tv_nsec > b->tv_nsec);
+}
+
+/* "Nov  6 14:03" for the last six months, "Nov  6  2025" for anything
+ * older or in the future, like GNU ls. The clock is read once, to the
+ * nanosecond. A file that looks newer than that may just have been changed
+ * since, so the clock is read again before the file counts as the future,
+ * as GNU ls does. time(), which only has whole seconds from a clock that
+ * lags behind file times, called a file made a moment ago the future. */
+static void time_string(const struct timespec *t, char *out, size_t size)
+{
+    static struct timespec now;
     const time_t six_months = 31556952 / 2; /* half a Gregorian year */
     struct tm tm;
 
-    if (now == 0)
-        now = time(NULL);
-    localtime_r(&t, &tm);
-    strftime(out, size, (t > now - six_months && t <= now) ? "%b %e %H:%M" : "%b %e  %Y", &tm);
+    if (now.tv_sec == 0 || later(t, &now))
+        clock_gettime(CLOCK_REALTIME, &now);
+    localtime_r(&t->tv_sec, &tm);
+    strftime(out, size, (t->tv_sec > now.tv_sec - six_months && !later(t, &now))
+                            ? "%b %e %H:%M" : "%b %e  %Y", &tm);
 }
 
 static void owner_name(uid_t uid, char *out, size_t size)
@@ -274,7 +284,7 @@ static void print_long(const struct list *list, const struct list *also_measure,
         owner_name(e->st.st_uid, owner, sizeof owner);
         group_name(e->st.st_gid, group, sizeof group);
         size_string(&e->st, size, sizeof size);
-        time_string(e->st.st_mtime, when, sizeof when);
+        time_string(&e->st.st_mtim, when, sizeof when);
         printf("%s %*ju %-*s %-*s %*s %s %s", mode, w_links, (uintmax_t)e->st.st_nlink,
                w_owner, owner, w_group, group, w_size, size, when, e->name);
         if (e->target != NULL)
