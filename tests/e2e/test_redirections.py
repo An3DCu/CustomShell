@@ -245,6 +245,7 @@ def test_input_is_back_after_a_builtin(run, workdir):
     assert result.stdout == f"{workdir}\nfrom stdin\n"
 
 
+@pytest.mark.not_under_valgrind("valgrind keeps file descriptors of its own open")
 def test_shell_leaks_no_fds(run):
     lines = "echo hi > f\n" * 20 + "echo hi > f 10> g\n" + "cat < f > h\n"
     # The child sh lists the fds of its parent, acsh itself.

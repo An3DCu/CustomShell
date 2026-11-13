@@ -17,6 +17,13 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "not_under_valgrind(reason): left out of `make test-valgrind`, for the reason given",
+    )
+
+
 @pytest.fixture(scope="session")
 def acsh():
     """Absolute path to the acsh under test."""

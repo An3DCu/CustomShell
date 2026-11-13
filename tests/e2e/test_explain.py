@@ -250,6 +250,7 @@ def test_quoted_explain_is_a_command_name(run):
     assert result.stderr == "acsh: explain: put it at the start of a line, before the command\n"
 
 
+@pytest.mark.not_under_valgrind("valgrind keeps file descriptors of its own open")
 def test_shell_has_no_explain_fd_until_it_is_used(run):
     result = run(stdin="sh -c 'ls /proc/$PPID/fd'\nset -o explain\nsh -c 'ls /proc/$PPID/fd'\n")
     # before: only 0, 1 and 2; after: the copy of stderr at 10 as well (ls

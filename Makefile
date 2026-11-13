@@ -57,7 +57,7 @@ CHECK    := $(BUILD)/unit/check.o
 VENV := .venv
 PY   := $(VENV)/bin/python
 
-.PHONY: all debug test test-unit test-e2e test-debug clean
+.PHONY: all debug test test-unit test-e2e test-debug test-valgrind clean
 
 # Keep the objects make builds on the way to a test binary. Without this it
 # treats them as intermediate files, deletes them, and recompiles every run.
@@ -108,6 +108,11 @@ debug:
 
 test-debug:
 	$(MAKE) MODE=debug test
+
+# The end-to-end tests again, with acsh and every tool under valgrind. Slow:
+# a few minutes. CI runs it on every PR.
+test-valgrind: all $(VENV)/ready
+	BUILD=$(BUILD) sh tests/valgrind.sh
 
 clean:
 	rm -rf build

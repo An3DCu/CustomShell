@@ -213,6 +213,7 @@ def test_dollar_dollar_is_the_shells_pid(run):
     assert parent == first
 
 
+@pytest.mark.not_under_valgrind("the wrapper script starts acsh under another name")
 def test_dollar_zero_is_how_acsh_was_started(run, acsh):
     assert run(stdin="echo $0\n").stdout == f"{acsh}\n"
 

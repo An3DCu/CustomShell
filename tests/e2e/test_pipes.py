@@ -24,6 +24,7 @@ def test_long_pipeline(run):
     assert result.returncode == 0
 
 
+@pytest.mark.not_under_valgrind("valgrind keeps file descriptors of its own open")
 def test_shell_holds_no_fds_after_a_long_pipeline(run):
     # Every pipe end the shell opened for 200 commands must be closed again.
     # The child sh lists the fds of its parent, acsh itself.
