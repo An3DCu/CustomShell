@@ -34,14 +34,15 @@ void *xcalloc(size_t count, size_t size)
 void *xreallocarray(void *p, size_t count, size_t size)
 {
     size_t bytes;
+    void *grown;
 
     if (size != 0 && count > SIZE_MAX / size)
         out_of_memory();
     bytes = count * size;
-    p = realloc(p, bytes ? bytes : 1);
-    if (p == NULL)
+    grown = realloc(p, bytes ? bytes : 1);
+    if (grown == NULL)
         out_of_memory();
-    return p;
+    return grown;
 }
 
 char *xstrdup(const char *s)

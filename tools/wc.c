@@ -131,6 +131,8 @@ int main(int argc, char **argv)
     rows = calloc(nfiles > 0 ? (size_t)nfiles : 1, sizeof *rows);
     ok = calloc(nfiles > 0 ? (size_t)nfiles : 1, sizeof *ok);
     if (rows == NULL || ok == NULL) {
+        free(rows);
+        free(ok);
         tool_error("memory", ENOMEM);
         return 1;
     }

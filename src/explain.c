@@ -376,7 +376,7 @@ void explain_exec(struct shell *sh, char *const *argv)
     char args[512], where[512], note[600];
     size_t n = 0;
 
-    if (!explain_on(sh))
+    if (!explain_on(sh) || argv[0] == NULL)
         return;
     while (argv[n] != NULL)
         n++;

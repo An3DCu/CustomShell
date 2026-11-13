@@ -260,7 +260,7 @@ static bool expand_dollar(const struct shell *sh, const char *word, size_t *i,
                           char *err, size_t errlen)
 {
     const char *p = word + *i + 1;
-    const char *name = p;
+    const char *name;
     const char *value = NULL;
     char num[32];
     size_t n;
@@ -529,7 +529,7 @@ static bool expand_list(struct shell *sh, char *const *words, size_t nwords,
                 return false;
             arg = xmalloc(n + 1 + strlen(value) + 1);
             memcpy(arg, w, n + 1);
-            strcpy(arg + n + 1, value);
+            memcpy(arg + n + 1, value, strlen(value) + 1);
             free(value);
             strvec_push(out, arg);
         } else {

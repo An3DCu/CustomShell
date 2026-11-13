@@ -319,7 +319,7 @@ static int search(struct edit *e)
 
     copy(before, e->text, e->len);
     for (;;) {
-        size_t from = at;
+        size_t from;
 
         free(shown);
         if (at < h->len) {

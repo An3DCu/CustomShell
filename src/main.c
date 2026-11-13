@@ -91,7 +91,7 @@ static bool use_own_tools(struct shell *sh)
     if (old != NULL && old[0] != '\0')
         sprintf(path, "%s:%s", tools, old);
     else
-        strcpy(path, tools);
+        memcpy(path, tools, strlen(tools) + 1);
     vars_set(&sh->vars, "PATH", path);
     vars_export(&sh->vars, "PATH");
     free(path);
