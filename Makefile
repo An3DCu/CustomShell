@@ -57,7 +57,7 @@ CHECK    := $(BUILD)/unit/check.o
 VENV := .venv
 PY   := $(VENV)/bin/python
 
-.PHONY: all debug test test-unit test-e2e test-debug test-valgrind fuzz fuzz-merge clean
+.PHONY: all debug test test-unit test-e2e test-debug test-valgrind fuzz fuzz-merge analyze clean
 
 # Keep the objects make builds on the way to a test binary. Without this it
 # treats them as intermediate files, deletes them, and recompiles every run.
@@ -138,6 +138,19 @@ fuzz: $(FUZZ_BIN)
 
 fuzz-merge: $(FUZZ_BIN)
 	$(FUZZ_BIN) -merge=1 -use_counters=0 tests/fuzz/corpus $(FUZZ_DIR)/new
+
+# Static analysis of the shell and the tools. gcc -fanalyzer goes through
+# each file first. Then clang-tidy runs the checks in .clang-tidy. Any
+# warning from either one fails it.
+ANALYZE_SRC   := $(SRC) $(TOOL_SRC) $(wildcard tools/lib/*.c)
+ANALYZE_FLAGS := -D_POSIX_C_SOURCE=200809L -Isrc -Itools/lib -std=c17 $(WARNINGS) -O1
+
+analyze:
+	@status=0; for f in $(ANALYZE_SRC); do \
+	    echo "gcc -fanalyzer $$f"; \
+	    gcc -fanalyzer $(ANALYZE_FLAGS) -c -o /dev/null $$f || status=1; \
+	done; exit $$status
+	clang-tidy --quiet $(ANALYZE_SRC) -- $(ANALYZE_FLAGS)
 
 clean:
 	rm -rf build

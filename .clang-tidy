@@ -1,0 +1,40 @@
+# The clang-tidy checks `make analyze` keeps at zero. Eight are off:
+#
+#   clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling
+#     Wants snprintf, memcpy and the like swapped for the _s functions of
+#     C11's Annex K. glibc doesn't have them.
+#   cert-err33-c
+#     Wants the result of every printf, fprintf and close checked. Most are
+#     messages to the terminal. A failed one has nowhere better to go.
+#   misc-include-cleaner
+#     Wants each name included from the exact header that defines it. On
+#     glibc that is often an internal header.
+#   misc-no-recursion
+#     Parsing, running and freeing nested commands recurse on purpose. The
+#     parser stops at 1000 levels of nesting.
+#   bugprone-multi-level-implicit-pointer-conversion
+#     Flags char ** passed to free() and qsort().
+#   bugprone-easily-swappable-parameters
+#     Flags any two neighbouring parameters of the same type.
+#   bugprone-assignment-in-if-condition
+#     Flags if ((fd = open(...)) < 0). I write it that way on purpose.
+#   bugprone-narrowing-conversions
+#     Flags char literals in ?: that are all in range.
+Checks: >
+  -*,
+  bugprone-*,
+  cert-*,
+  clang-analyzer-*,
+  misc-*,
+  performance-*,
+  portability-*,
+  -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,
+  -cert-err33-c,
+  -misc-include-cleaner,
+  -misc-no-recursion,
+  -bugprone-multi-level-implicit-pointer-conversion,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-assignment-in-if-condition,
+  -bugprone-narrowing-conversions
+WarningsAsErrors: '*'
+HeaderFilterRegex: '(src|tools)/'
